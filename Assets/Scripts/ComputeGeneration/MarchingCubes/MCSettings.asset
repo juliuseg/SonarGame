@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: MCSettings
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
   scale: {x: 1, y: 1, z: 1}
-  chunkDims: {x: 2, y: 2, z: 2}
+  chunkDims: {x: 64, y: 32, z: 32}
   isoLevel: 0.5
+  noiseFrequency: {x: 1, y: 1, z: 1}
+  noiseOffset: {x: 0, y: 0, z: 0}

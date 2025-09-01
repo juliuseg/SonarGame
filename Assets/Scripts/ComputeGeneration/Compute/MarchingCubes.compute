@@ -2,8 +2,10 @@
 #include "Includes/MarchTables.compute"
 #include "Includes/Noise.compute"
 
-struct MCVertex { 
-    float3 positionOS; 
+struct MCTriangle { 
+    float3 positionOS0; 
+    float3 positionOS1; 
+    float3 positionOS2; 
 };
 
 static const int3 cornerOffsets[8] = {
@@ -21,18 +23,28 @@ static const int3 cornerOffsets[8] = {
 float4x4 _Transform;
 float _IsoLevel;
 uint3 _ChunkDims;
-AppendStructuredBuffer<MCVertex> _GeneratedVertices;
+AppendStructuredBuffer<MCTriangle> _GeneratedTriangles;
+float3 _NoiseOffset;
+float3 _NoiseFrequency;  // higher = denser features
 
-void AppendVertex(float3 pos)
+void AppendTriangle(float3 pos, float3 pos1, float3 pos2)
 {
-    MCVertex v; 
-    v.positionOS = pos; 
-    _GeneratedVertices.Append(v);
+    MCTriangle t; 
+    t.positionOS0 = pos; 
+    t.positionOS1 = pos1;  
+    t.positionOS2 = pos2; 
+    _GeneratedTriangles.Append(t);
 }
 
-float sampleNoise(float3 pOS) {
-    float3 p = mul(_Transform, float4(pOS,1)).xyz;
-    return snoise(p);
+float3 TransformPoint(float3 p) {
+    return mul(_Transform, float4(p, 1)).xyz;
+}
+
+float sampleNoise(float3 p) {
+    // apply frequency and offset
+    float3 q = p * _NoiseFrequency + _NoiseOffset;
+
+    return snoise(q);
 }
 
 [numthreads(8,8,8)]
@@ -45,7 +57,8 @@ void Main(uint3 id : SV_DispatchThreadID)
 
     int3 cell = int3(id);
     [unroll] for (int i = 0; i < 8; i++) {
-        cornerPos[i]   = (float3)(cell + cornerOffsets[i]);
+        cornerPos[i] = (float3)(cell + cornerOffsets[i]);
+        cornerPos[i] = TransformPoint(cornerPos[i]);
         cornerValues[i] = sampleNoise(cornerPos[i]);
     }
 
@@ -78,8 +91,6 @@ void Main(uint3 id : SV_DispatchThreadID)
         float3 v0 = edgeVerts[e0];
         float3 v1 = edgeVerts[e1];
         float3 v2 = edgeVerts[e2];
-        AppendVertex(v0);
-        AppendVertex(v1);
-        AppendVertex(v2);
+        AppendTriangle(v0, v1, v2);
     }
 }
