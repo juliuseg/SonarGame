@@ -822,6 +822,7 @@ GameObject:
   - component: {fileID: 918303222}
   - component: {fileID: 918303221}
   - component: {fileID: 918303224}
+  - component: {fileID: 918303225}
   m_Layer: 0
   m_Name: MarchingCubesGenerator
   m_TagString: Untagged
@@ -913,7 +914,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MCBaker
   shader: {fileID: 7200000, guid: fbf175ce4324749338eb1bd405efbe5e, type: 3}
-  settings: {fileID: 11400000, guid: 0319cecad557c467b984e7531e165031, type: 2}
+  settings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
+  runConstant: 0
+--- !u!114 &918303225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 918303220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd1839cebd62745668e0d6f41250588a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ChunkManager
+  playerTransform: {fileID: 1976820553}
+  renderDistance: 50
+  chunkSize: 16
+  settings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
+  shader: {fileID: 7200000, guid: fbf175ce4324749338eb1bd405efbe5e, type: 3}
+  maxChunksPerFrame: 2
+  updateInterval: 0.1
 --- !u!1 &1017841183
 GameObject:
   m_ObjectHideFlags: 0
@@ -1257,6 +1278,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1976820552
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1976820553}
+  m_Layer: 0
+  m_Name: TestTransform
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1976820553
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1976820552}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.00167, y: 0, z: 2.05523}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1270,3 +1322,4 @@ SceneRoots:
   - {fileID: 412249979}
   - {fileID: 400588065}
   - {fileID: 1021569267}
+  - {fileID: 1976820553}

@@ -1,6 +1,7 @@
 #pragma kernel Main
 #include "Includes/MarchTables.compute"
 #include "Includes/Noise.compute"
+#include "Includes/Worley.hlsl"
 
 struct MCTriangle { 
     float3 positionOS0; 
@@ -26,6 +27,7 @@ uint3 _ChunkDims;
 AppendStructuredBuffer<MCTriangle> _GeneratedTriangles;
 float3 _NoiseOffset;
 float3 _NoiseFrequency;  // higher = denser features
+RWStructuredBuffer<uint> _MinMax; // [0]=min, [1]=max
 
 void AppendTriangle(float3 pos, float3 pos1, float3 pos2)
 {
@@ -40,11 +42,16 @@ float3 TransformPoint(float3 p) {
     return mul(_Transform, float4(p, 1)).xyz;
 }
 
-float sampleNoise(float3 p) {
+float SampleSimplexNoise(float3 p) {
     // apply frequency and offset
     float3 q = p * _NoiseFrequency + _NoiseOffset;
 
     return snoise(q);
+}
+
+float SampleWorleyNoise(float3 p) {
+
+    return SampleWorleyCaves(p);
 }
 
 [numthreads(8,8,8)]
@@ -57,9 +64,14 @@ void Main(uint3 id : SV_DispatchThreadID)
 
     int3 cell = int3(id);
     [unroll] for (int i = 0; i < 8; i++) {
-        cornerPos[i] = (float3)(cell + cornerOffsets[i]);
-        cornerPos[i] = TransformPoint(cornerPos[i]);
-        cornerValues[i] = sampleNoise(cornerPos[i]);
+        float3 p = (float3)(cell + cornerOffsets[i]);
+        p = TransformPoint(p);
+        float v = SampleWorleyNoise(p);
+        cornerPos[i] = p;
+        cornerValues[i] = v;
+
+        InterlockedMin(_MinMax[0], asuint(v));
+        InterlockedMax(_MinMax[1], asuint(v));
     }
 
     int cubeIndex = 0;

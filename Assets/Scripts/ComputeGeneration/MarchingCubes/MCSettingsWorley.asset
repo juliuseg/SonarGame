@@ -10,10 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e5e1fcf70a90e48f789f23946cb7f315, type: 3}
-  m_Name: MCSettings
+  m_Name: MCSettingsWorley
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
   scale: {x: 1, y: 1, z: 1}
-  chunkDims: {x: 64, y: 32, z: 32}
-  isoLevel: 0.5
+  chunkDims: {x: 10, y: 10, z: 10}
+  isoLevel: 0.3
   noiseFrequency: {x: 1, y: 1, z: 1}
   noiseOffset: {x: 0, y: 0, z: 0}
+  noiseScale: 0.05
+  verticalScale: 1
+  seed: 0
+  caveHeightFalloff: 20

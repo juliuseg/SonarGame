@@ -45,8 +45,6 @@ public class Worley3DTerrainGenerator : TerrainGenerator
         float jy = ((h >> 8) & 0xFF) / 255f;
         float jz = ((h >>16) & 0xFF) / 255f;
 
-        // INSERT_YOUR_CODE
-        // If random 0-1 is >0.99, print "hello" (using regular randomness)
         return new Vector3(cell.x + jx, cell.y + jy, cell.z + jz);
         
 

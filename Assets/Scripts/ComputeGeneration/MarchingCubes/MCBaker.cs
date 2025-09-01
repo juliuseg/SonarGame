@@ -19,6 +19,8 @@ public class MCBaker : MonoBehaviour
     public ComputeShader shader;
 
     public MCSettings settings;
+
+    public bool runConstant = true;
     
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -37,7 +39,7 @@ public class MCBaker : MonoBehaviour
     void Update()
     {
 
-        if (Keyboard.current.spaceKey.wasPressedThisFrame)
+        if (Keyboard.current.spaceKey.wasPressedThisFrame || runConstant)
         {
             Run(out Mesh generatedMesh);
 
@@ -70,7 +72,12 @@ public class MCBaker : MonoBehaviour
         // Set buffers and variables 
         shader.SetBuffer(idMCKernel, "_GeneratedTriangles", triangleBuffer);
     
-        Vector3 origin = transform.position - new Vector3(settings.scale.x / 2, settings.scale.y / 2, settings.scale.z / 2);
+        Vector3 origin = - new Vector3(
+            settings.scale.x*settings.chunkDims.x / 2, 
+            settings.scale.y*settings.chunkDims.y / 2, 
+            settings.scale.z*settings.chunkDims.z / 2
+        );
+
         Vector3 scale = settings.scale;
 
         // Convert the scale and rotation settings into a transformation matrix
@@ -85,15 +92,38 @@ public class MCBaker : MonoBehaviour
                                             settings.noiseFrequency.y,
                                             settings.noiseFrequency.z);
 
+        // Set Worley parameters
+        
+        shader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
+        shader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
+        shader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
+
+        // If seed is 0, use a random seed
+        int seed = settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed;
+        shader.SetInt("_WorleySeed", seed);
+
+
+        var minMax = new ComputeBuffer(2, sizeof(uint), ComputeBufferType.Structured);
+        var init = new uint[] { 0x7f7fffff, 0x00000000 }; // +INF, 0
+        minMax.SetData(init);
+        shader.SetBuffer(idMCKernel, "_MinMax", minMax);
+
+
 
 
         shader.GetKernelThreadGroupSizes(idMCKernel, out uint tgX, out uint tgY, out uint tgZ);
-
-        // Debug.Log($"ThreadGroupSizes: {tgX},{tgY},{tgZ}");
         int dispatchSizeX = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
         int dispatchSizeY = Mathf.CeilToInt((float)settings.chunkDims.y / tgY);
         int dispatchSizeZ = Mathf.CeilToInt((float)settings.chunkDims.z / tgZ);
         shader.Dispatch(idMCKernel, dispatchSizeX, dispatchSizeY, dispatchSizeZ);
+
+        // Get the min and max values
+        var mm = new uint[2];
+        minMax.GetData(mm);
+        float fMin = System.BitConverter.ToSingle(System.BitConverter.GetBytes(mm[0]),0);
+        float fMax = System.BitConverter.ToSingle(System.BitConverter.GetBytes(mm[1]),0);
+        Debug.Log($"Worley F1 range: [{fMin}, {fMax}]");
+        minMax.Release();
 
         // Read back only the appended count
         var countBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
@@ -110,6 +140,10 @@ public class MCBaker : MonoBehaviour
 
         countBuf.Release();
         triangleBuffer.Release();
+
+        
+
+
         return true;
 
     }
