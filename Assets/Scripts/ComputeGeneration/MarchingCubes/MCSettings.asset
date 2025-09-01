@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5e1fcf70a90e48f789f23946cb7f315, type: 3}
+  m_Name: MCSettings
+  m_EditorClassIdentifier: Assembly-CSharp::MCSettings
+  scale: {x: 1, y: 1, z: 1}
+  chunkDims: {x: 2, y: 2, z: 2}
+  isoLevel: 0.5

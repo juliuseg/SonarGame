@@ -66,11 +66,11 @@ public class TerrainBaker : MonoBehaviour
         GraphicsBuffer generatedVertBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, totalVertices, GENERATED_VERT_STRIDE);
         GraphicsBuffer generatedIndexBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, totalIndices, GENERATED_INDEX_STRIDE);
 
-        int idGrassKernel = shader.FindKernel("Main");
+        int idTerrainKernel = shader.FindKernel("Main");
 
         // Set buffers and variables
-        shader.SetBuffer(idGrassKernel, "_GeneratedVertices", generatedVertBuffer);
-        shader.SetBuffer(idGrassKernel, "_GeneratedIndices", generatedIndexBuffer);
+        shader.SetBuffer(idTerrainKernel, "_GeneratedVertices", generatedVertBuffer);
+        shader.SetBuffer(idTerrainKernel, "_GeneratedIndices", generatedIndexBuffer);
 
         Vector3 origin = transform.position - new Vector3(settings.scale.x / 2, 0, settings.scale.z / 2);
         Vector3 scale = settings.scale;
@@ -91,9 +91,9 @@ public class TerrainBaker : MonoBehaviour
         shader.SetFloats("_noiseOffset", new float[] { noiseOffsetX, 0, noiseOffsetY});
 
         // Find the needed dispatch size, so that each triangle will be run over
-        shader.GetKernelThreadGroupSizes(idGrassKernel, out uint threadGroupSize, out _, out _);
+        shader.GetKernelThreadGroupSizes(idTerrainKernel, out uint threadGroupSize, out _, out _);
         int dispatchSize = Mathf.CeilToInt((float)totalTriangles / threadGroupSize);
-        shader.Dispatch(idGrassKernel, dispatchSize, 1, 1);
+        shader.Dispatch(idTerrainKernel, dispatchSize, 1, 1);
 
         // Get the data from the compute shader
         // Unity will wait here until the compute shader is finished

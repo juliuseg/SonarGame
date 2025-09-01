@@ -1,59 +1,85 @@
-// Marching Cubes implementation
 #pragma kernel Main
 #include "Includes/MarchTables.compute"
 #include "Includes/Noise.compute"
 
-
-// We will for each cell look up the corner verticies from a noise function
-// Then we see which points are inside the surface and which are outside
-// We then look up the triangles from the Marching Tables
-
-
-struct MCVertex
-{
-    float3 positionOS;
-    float3 normalOS;
-    //float2 uv; // We will not need uvs for marching cubes, so ezpz
+struct MCVertex { 
+    float3 positionOS; 
 };
 
-float isoLevel = 0.0f;
+static const int3 cornerOffsets[8] = {
+    int3(0,0,0), // 0
+    int3(1,0,0), // 1
+    int3(1,1,0), // 2
+    int3(0,1,0), // 3
+    int3(0,0,1), // 4
+    int3(1,0,1), // 5
+    int3(1,1,1), // 6
+    int3(0,1,1)  // 7
+};
 
 
+float4x4 _Transform;
+float _IsoLevel;
+uint3 _ChunkDims;
 AppendStructuredBuffer<MCVertex> _GeneratedVertices;
 
+void AppendVertex(float3 pos)
+{
+    MCVertex v; 
+    v.positionOS = pos; 
+    _GeneratedVertices.Append(v);
+}
+
+float sampleNoise(float3 pOS) {
+    float3 p = mul(_Transform, float4(pOS,1)).xyz;
+    return snoise(p);
+}
 
 [numthreads(8,8,8)]
-void Main(uint3 id : SV_DispatchThreadID) {
-    // The values of what cell we are sampling from is easy its just id
-    // The corner values are just id + offsets
-    // We will sample the noise function at these points
+void Main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y || id.z >= _ChunkDims.z) return;
 
-    float3 cornerValues[8];
-    uint3 offsets[8] = {
-        uint3(0,0,0),
-        uint3(1,0,0),
-        uint3(0,1,0),
-        uint3(1,1,0),
-        uint3(0,0,1),
-        uint3(1,0,1),
-        uint3(0,1,1),
-        uint3(1,1,1),
-    };
-    for (int i = 0; i < 8; i++) {
-        cornerValues[i] = snoise(id + offsets[i]);
+    float  cornerValues[8];
+    float3 cornerPos[8];
+
+    int3 cell = int3(id);
+    [unroll] for (int i = 0; i < 8; i++) {
+        cornerPos[i]   = (float3)(cell + cornerOffsets[i]);
+        cornerValues[i] = sampleNoise(cornerPos[i]);
     }
-
-    // Now we need to figure out which points are inside the surface and which are outside
-    // If the value is negative, then its outside the surface. We need to make sure we get 
 
     int cubeIndex = 0;
-    for (int i = 0; i < 8; i++) {
-        if (cornerValues[i] < isoLevel) // or > depending on convention
-            cubeIndex |= (1 << i);
+    [unroll] for (int i = 0; i < 8; i++) {
+        if (cornerValues[i] < _IsoLevel) cubeIndex |= (1 << i);
     }
 
-    
+    int edgeMask = edges[cubeIndex];
+    if (edgeMask == 0) return;
 
+    float3 edgeVerts[12];
+    [unroll] for (int e = 0; e < 12; e++) {
+        if (edgeMask & (1 << e)) {
+            int c0 = cornerIndexAFromEdge[e];
+            int c1 = cornerIndexBFromEdge[e];
+            float v0 = cornerValues[c0];
+            float v1 = cornerValues[c1];
+            float denom = v1 - v0;
+            float t = (abs(denom) > 1e-6) ? (_IsoLevel - v0) / denom : 0.5;
+            t = saturate(t);
+            edgeVerts[e] = lerp(cornerPos[c0], cornerPos[c1], t);
+        }
+    }
 
-
+    for (int k = 0; triangulation[cubeIndex][k] != -1; k += 3) {
+        int e0 = triangulation[cubeIndex][k];
+        int e1 = triangulation[cubeIndex][k+1];
+        int e2 = triangulation[cubeIndex][k+2];
+        float3 v0 = edgeVerts[e0];
+        float3 v1 = edgeVerts[e1];
+        float3 v2 = edgeVerts[e2];
+        AppendVertex(v0);
+        AppendVertex(v1);
+        AppendVertex(v2);
+    }
 }
