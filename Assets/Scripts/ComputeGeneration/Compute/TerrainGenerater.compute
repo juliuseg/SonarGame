@@ -1,0 +1,98 @@
+#pragma kernel Main
+#include "Includes/Noise.compute"
+
+struct TerrainVertex
+{
+    float3 positionOS;
+    float3 normalOS;
+    float2 uv;
+};
+
+RWStructuredBuffer<TerrainVertex> _GeneratedVertices;
+RWStructuredBuffer<int> _GeneratedIndices;
+
+uint _NumSourceTriangles;
+float _HeightMultiplier;
+uint _HeightmapWidth;
+uint _HeightmapHeight;
+float3 _noiseOffset;
+float4x4 _Transform;
+
+// --- Helpers ---
+
+float3 CalculateTriangleNormal(float3 a, float3 b, float3 c)
+{
+    return normalize(cross(b - a, c - a));
+}
+
+float GetHeight(float3 posXZ)
+{
+    // TODO: implement real simplex/perlin noise    
+    // posXZ.x and posXZ.z are the grid coords, height is y
+    return snoise(posXZ+_noiseOffset)*_HeightMultiplier;
+}
+
+float2 CalcUV(float3 pos)
+{
+    return float2(
+        pos.x / (float)_HeightmapWidth,
+        pos.z / (float)_HeightmapHeight
+    );
+}
+
+TerrainVertex MakeVertex(float3 pos, float3 normal)
+{
+    TerrainVertex v;
+    v.positionOS = pos;
+    v.normalOS   = normal;
+    v.uv         = CalcUV(pos);
+    return v;
+}
+
+void WriteTriangle(uint triIndex, float3 a, float3 b, float3 c)
+{
+    
+
+    // Normal
+    float3 n = CalculateTriangleNormal(a, b, c);
+
+    // Vertices
+    uint vIndex = triIndex * 3;
+    _GeneratedVertices[vIndex + 0] = MakeVertex(a, n);
+    _GeneratedVertices[vIndex + 1] = MakeVertex(b, n);
+    _GeneratedVertices[vIndex + 2] = MakeVertex(c, n);
+
+    // Indices (no sharing, just sequential)
+    _GeneratedIndices[vIndex + 0] = vIndex + 0;
+    _GeneratedIndices[vIndex + 1] = vIndex + 1;
+    _GeneratedIndices[vIndex + 2] = vIndex + 2;
+}
+
+// --- Kernel ---
+
+[numthreads(128,1,1)]
+void Main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _NumSourceTriangles) return;
+
+    uint triIndex = id.x;
+    uint rowIndex = triIndex / 2 / _HeightmapWidth;
+    uint colIndex = (triIndex / 2) % _HeightmapWidth;
+    uint evenOdd  = triIndex % 2;
+
+    float3 a = float3(colIndex+evenOdd, 0.0, rowIndex);
+    float3 b = float3(colIndex,         0.0, rowIndex+1);
+    float3 c = float3(colIndex+1,       0.0, rowIndex+evenOdd);
+
+    // Heights
+    a.y = GetHeight(a);
+    b.y = GetHeight(b);
+    c.y = GetHeight(c);
+
+    // Transform to world space
+    a = mul(_Transform, float4(a, 1)).xyz;
+    b = mul(_Transform, float4(b, 1)).xyz;
+    c = mul(_Transform, float4(c, 1)).xyz;
+
+    WriteTriangle(triIndex, a, b, c);
+}

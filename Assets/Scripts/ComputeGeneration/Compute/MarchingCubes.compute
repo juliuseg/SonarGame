@@ -1,0 +1,59 @@
+// Marching Cubes implementation
+#pragma kernel Main
+#include "Includes/MarchTables.compute"
+#include "Includes/Noise.compute"
+
+
+// We will for each cell look up the corner verticies from a noise function
+// Then we see which points are inside the surface and which are outside
+// We then look up the triangles from the Marching Tables
+
+
+struct MCVertex
+{
+    float3 positionOS;
+    float3 normalOS;
+    //float2 uv; // We will not need uvs for marching cubes, so ezpz
+};
+
+float isoLevel = 0.0f;
+
+
+AppendStructuredBuffer<MCVertex> _GeneratedVertices;
+
+
+[numthreads(8,8,8)]
+void Main(uint3 id : SV_DispatchThreadID) {
+    // The values of what cell we are sampling from is easy its just id
+    // The corner values are just id + offsets
+    // We will sample the noise function at these points
+
+    float3 cornerValues[8];
+    uint3 offsets[8] = {
+        uint3(0,0,0),
+        uint3(1,0,0),
+        uint3(0,1,0),
+        uint3(1,1,0),
+        uint3(0,0,1),
+        uint3(1,0,1),
+        uint3(0,1,1),
+        uint3(1,1,1),
+    };
+    for (int i = 0; i < 8; i++) {
+        cornerValues[i] = snoise(id + offsets[i]);
+    }
+
+    // Now we need to figure out which points are inside the surface and which are outside
+    // If the value is negative, then its outside the surface. We need to make sure we get 
+
+    int cubeIndex = 0;
+    for (int i = 0; i < 8; i++) {
+        if (cornerValues[i] < isoLevel) // or > depending on convention
+            cubeIndex |= (1 << i);
+    }
+
+    
+
+
+
+}
