@@ -19,8 +19,9 @@ public class MCBaker : MonoBehaviour
     public ComputeShader shader;
 
     public MCSettings settings;
+    // public Vector3Int chunkCount;
 
-    public bool runConstant = true;
+    // public bool runConstant = true;
     
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -35,28 +36,65 @@ public class MCBaker : MonoBehaviour
 
     
     
-
+    /*
     void Update()
     {
-
         if (Keyboard.current.spaceKey.wasPressedThisFrame || runConstant)
         {
-            Run(out Mesh generatedMesh);
 
-            if (generatedMesh != null)
+            Debug.Log("Running MCBaker");
+            // Delete all children of the game object
+            foreach (Transform child in transform)
             {
-                // Attach the mesh to the game object
-                Debug.Log("Attaching mesh to game object");
-                GetComponent<MeshFilter>().mesh = generatedMesh;
+                Destroy(child.gameObject);
+            }
+
+            // Make a grid of chunks, centered so the middle chunk is at 0,0,0
+            Vector3 chunkSize = Vector3.Scale(settings.scale, settings.chunkDims);
+
+            // Calculate the center offset so that the middle chunk is at 0,0,0
+            Vector3Int center = new Vector3Int(
+                chunkCount.x / 2,
+                chunkCount.y / 2,
+                chunkCount.z / 2
+            );
+
+            for (int x = 0; x < chunkCount.x; x++)
+            for (int y = 0; y < chunkCount.y; y++)
+            for (int z = 0; z < chunkCount.z; z++)
+            {
+                // Offset so that the center chunk is at 0,0,0
+                Vector3 offset = new Vector3(
+                    (x - center.x) * chunkSize.x,
+                    (y - center.y) * chunkSize.y,
+                    (z - center.z) * chunkSize.z
+                );
+
+                Run(out Mesh generatedMesh, offset);
+
+                if (generatedMesh != null)
+                {
+                    // Create a child GameObject for this chunk
+                    GameObject chunkObj = new GameObject($"Chunk_{x}_{y}_{z}");
+                    chunkObj.transform.parent = this.transform;
+                    chunkObj.transform.localRotation = Quaternion.identity;
+                    chunkObj.transform.localScale = Vector3.one;
+
+                    var meshFilter = chunkObj.AddComponent<MeshFilter>();
+                    var meshRenderer = chunkObj.AddComponent<MeshRenderer>();
+                    meshFilter.mesh = generatedMesh;
+
+                    // Optionally copy material from parent if exists
+                    var parentRenderer = GetComponent<MeshRenderer>();
+                    if (parentRenderer != null)
+                        meshRenderer.sharedMaterial = parentRenderer.sharedMaterial;
+                }
             }
         }
-
-        
     }
-    
-    
+    */
 
-    public bool Run (out Mesh generatedMesh){
+    public bool Run (out Mesh generatedMesh, Vector3 position){
 
         int maxTriangles = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z * 5;
         int maxVertices  = maxTriangles * 3;
@@ -72,13 +110,15 @@ public class MCBaker : MonoBehaviour
         // Set buffers and variables 
         shader.SetBuffer(idMCKernel, "_GeneratedTriangles", triangleBuffer);
     
-        Vector3 origin = - new Vector3(
-            settings.scale.x*settings.chunkDims.x / 2, 
-            settings.scale.y*settings.chunkDims.y / 2, 
-            settings.scale.z*settings.chunkDims.z / 2
+        Vector3 scale = settings.scale;
+        Vector3 dims = settings.chunkDims;
+
+        Vector3 origin = position - new Vector3(
+            scale.x*dims.x / 2, 
+            scale.y*dims.y / 2, 
+            scale.z*dims.z / 2
         );
 
-        Vector3 scale = settings.scale;
 
         // Convert the scale and rotation settings into a transformation matrix
         shader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.Euler(Vector3.zero), scale));
@@ -108,6 +148,13 @@ public class MCBaker : MonoBehaviour
         minMax.SetData(init);
         shader.SetBuffer(idMCKernel, "_MinMax", minMax);
 
+        // Set displacement parameters
+        shader.SetFloat("_DisplacementStrength", settings.displacementStrength);
+        shader.SetFloat("_DisplacementScale", settings.displacementScale);
+        shader.SetInt("_Octaves", settings.octaves);
+        shader.SetFloat("_Lacunarity", settings.lacunarity);
+        shader.SetFloat("_Persistence", settings.persistence);
+
 
 
 
@@ -122,7 +169,6 @@ public class MCBaker : MonoBehaviour
         minMax.GetData(mm);
         float fMin = System.BitConverter.ToSingle(System.BitConverter.GetBytes(mm[0]),0);
         float fMax = System.BitConverter.ToSingle(System.BitConverter.GetBytes(mm[1]),0);
-        Debug.Log($"Worley F1 range: [{fMin}, {fMax}]");
         minMax.Release();
 
         // Read back only the appended count

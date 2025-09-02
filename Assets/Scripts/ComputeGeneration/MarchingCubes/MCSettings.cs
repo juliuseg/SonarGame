@@ -14,4 +14,12 @@ public class MCSettings : ScriptableObject
     public float verticalScale = 1.0f;
     public uint seed = 12345;
     public float caveHeightFalloff = 20.0f;
+
+    [Header("Displacement Settings")]
+    public float displacementStrength = 0.015f;
+    public float displacementScale = 12.5f;
+    public int octaves = 4;
+    public float lacunarity = 2f;
+    public float persistence = 0.5f;
+
 }

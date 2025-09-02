@@ -12,11 +12,6 @@ public class CamFollow : MonoBehaviour
 
     Vector3 smoothV;
 
-    public Color surfaceColor;
-    public Color deepColor;
-
-    public float deepColorDepth = 10;
-    public float surfaceColorDepth = 50;
 
     
     void LateUpdate()
@@ -30,12 +25,7 @@ public class CamFollow : MonoBehaviour
 
         transform.rotation = Quaternion.Slerp(rot,targetRot,Time.deltaTime * rotSmoothSpeed);
 
-        float depth = transform.position.y;
-
-        float t = Mathf.InverseLerp(deepColorDepth, surfaceColorDepth, Mathf.Clamp(depth, deepColorDepth, surfaceColorDepth));
-        Color fogColor = Color.Lerp(deepColor, surfaceColor, t);
-        
-        RenderSettings.fogColor = fogColor;
-        GetComponent<Camera>().backgroundColor = fogColor;
+        // Mirror the fog color to the camera background color
+        GetComponent<Camera>().backgroundColor = RenderSettings.fogColor;
     }
 }

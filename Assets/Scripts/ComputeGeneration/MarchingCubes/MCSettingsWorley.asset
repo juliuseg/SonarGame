@@ -13,11 +13,16 @@ MonoBehaviour:
   m_Name: MCSettingsWorley
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
   scale: {x: 1, y: 1, z: 1}
-  chunkDims: {x: 10, y: 10, z: 10}
-  isoLevel: 0.3
+  chunkDims: {x: 32, y: 32, z: 32}
+  isoLevel: 0.15
   noiseFrequency: {x: 1, y: 1, z: 1}
   noiseOffset: {x: 0, y: 0, z: 0}
-  noiseScale: 0.05
-  verticalScale: 1
-  seed: 0
+  noiseScale: 0.03
+  verticalScale: 2
+  seed: 3
   caveHeightFalloff: 20
+  displacementStrength: 0.05
+  displacementScale: 12.5
+  octaves: 4
+  lacunarity: 2
+  persistence: 0.5
