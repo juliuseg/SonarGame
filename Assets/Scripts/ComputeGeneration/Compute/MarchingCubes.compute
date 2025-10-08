@@ -4,11 +4,15 @@
 #include "Includes/Worley.hlsl"
 
 struct MCTriangle { 
-    float3 positionOS0; 
-    float3 positionOS1; 
-    float3 positionOS2; 
+    float3 positionWS0; 
+    float3 positionWS1; 
+    float3 positionWS2; 
 };
 
+struct Candidate {
+    float3 pos;
+    float3 n;
+};
 static const int3 cornerOffsets[8] = {
     int3(0,0,0), // 0
     int3(1,0,0), // 1
@@ -19,6 +23,8 @@ static const int3 cornerOffsets[8] = {
     int3(1,1,1), // 6
     int3(0,1,1)  // 7
 };
+
+
 
 
 float4x4 _Transform;
@@ -34,14 +40,64 @@ int   _Octaves;
 float _Lacunarity;
 float _Persistence;
 
-void AppendTriangle(float3 pos, float3 pos1, float3 pos2)
+float3 _Up;
+float _CosUp;
+float _CosDown;
+float _CosSide;
+uint _ThresholdUINT;
+
+AppendStructuredBuffer<Candidate> _CandidatesDown;
+AppendStructuredBuffer<Candidate> _CandidatesSide;
+AppendStructuredBuffer<Candidate> _CandidatesUp;
+
+
+// simple PCG hash
+uint pcg_hash(uint v)
 {
-    MCTriangle t; 
-    t.positionOS0 = pos; 
-    t.positionOS1 = pos1;  
-    t.positionOS2 = pos2; 
-    _GeneratedTriangles.Append(t);
+    v ^= v >> 16;
+    v *= 0x7feb352d;
+    v ^= v >> 15;
+    v *= 0x846ca68b;
+    v ^= v >> 16;
+    return v;
 }
+
+void AppendTriangle(float3 pos, float3 pos1, float3 pos2, uint triSeed)
+{
+    float3 c = (pos + pos1 + pos2) * (1.0/3.0);
+
+    // record triangle in triangle buffer (if still needed)
+    MCTriangle t;
+    t.positionWS0 = pos;
+    t.positionWS1 = pos1;
+    t.positionWS2 = pos2;
+    _GeneratedTriangles.Append(t);
+
+    // Calculate area of triangle
+    float3 ab = pos1 - pos;
+    float3 ac = pos2 - pos;
+    float3 n = normalize(cross(ab, ac));
+
+    Candidate cand;
+    cand.pos = c;
+    cand.n   = n;
+
+    if (dot(n, _Up) < -_CosDown)
+    {
+        _CandidatesDown.Append(cand);
+    } 
+    else if (dot(n, _Up) > _CosUp)
+    {
+        _CandidatesUp.Append(cand);
+    } 
+    else 
+    {
+        _CandidatesSide.Append(cand);
+    } 
+
+ 
+}
+
 
 float3 TransformPoint(float3 p) {
     return mul(_Transform, float4(p, 1)).xyz;
@@ -128,6 +184,10 @@ void Main(uint3 id : SV_DispatchThreadID)
         float3 v0 = edgeVerts[e0];
         float3 v1 = edgeVerts[e1];
         float3 v2 = edgeVerts[e2];
-        AppendTriangle(v0, v1, v2);
+
+        // derive a stable per-triangle seed (e.g. from dispatch ID and loop index)
+        uint triSeed = (id.x*73856093u) ^ (id.y*19349663u) ^ (id.z*83492791u) ^ (uint)k;
+
+        AppendTriangle(v0, v1, v2, triSeed);
     }
 }

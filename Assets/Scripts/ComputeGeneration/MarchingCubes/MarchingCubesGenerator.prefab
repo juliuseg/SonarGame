@@ -119,6 +119,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ChunkLoader
   baker: {fileID: 1981270668405195711}
   target: {fileID: 0}
-  radius: 100
   unloadBuffer: 0
   maxBuildsPerFrame: 4
+  surfaceRadius: 120
+  deepRadius: 70
+  waterLevel: 20
+  deepLevel: -10
+  reloadTerrain: 0

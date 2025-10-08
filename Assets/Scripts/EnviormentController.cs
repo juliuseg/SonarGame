@@ -11,6 +11,10 @@ public class EnviormentController : MonoBehaviour
     public float fogMax = 0.1f;
     public Color surfaceColor = Color.cyan;
     public Color deepColor = Color.blue;
+
+    [Header("Fog Settings: Debug Set Fog")]
+    public bool setFog = false;
+    public GameObject debugLight;
     
     [Header("Player Reference")]
     public Transform playerTransform;
@@ -19,10 +23,19 @@ public class EnviormentController : MonoBehaviour
     {
         if (playerTransform == null) return;
         
-        float playerHeight = playerTransform.position.y;
-        float depthRatio = Mathf.Clamp01((waterHeight - playerHeight) / (waterHeight - darkestDepth));
         
-        RenderSettings.fogDensity = Mathf.Lerp(fogMin, fogMax, depthRatio);
-        RenderSettings.fogColor = Color.Lerp(surfaceColor, deepColor, depthRatio);
+
+        if (setFog)
+        {
+            float playerHeight = playerTransform.position.y;
+            float depthRatio = Mathf.Clamp01((waterHeight - playerHeight) / (waterHeight - darkestDepth));
+            RenderSettings.fog = true;
+            RenderSettings.fogDensity = Mathf.Lerp(fogMin, fogMax, depthRatio);
+            RenderSettings.fogColor = Color.Lerp(surfaceColor, deepColor, depthRatio);
+            debugLight.SetActive(false);
+        } else {
+            RenderSettings.fog = false;
+            debugLight.SetActive(true);
+        }
     }
 }

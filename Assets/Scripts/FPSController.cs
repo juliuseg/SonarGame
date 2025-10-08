@@ -44,6 +44,8 @@ public class FPSController : MonoBehaviour
         }
 
         rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+        
     }
     
     void OnEnable()

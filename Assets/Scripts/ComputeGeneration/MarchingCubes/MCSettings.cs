@@ -22,4 +22,10 @@ public class MCSettings : ScriptableObject
     public float lacunarity = 2f;
     public float persistence = 0.5f;
 
+    [Header("Candidates Settings")]
+    public float cosUp = 0.5f;
+    public float cosDown = -0.5f;
+    public float cosSide = 0.5f;
+    public float foliageDensity = 0.1f;
+
 }

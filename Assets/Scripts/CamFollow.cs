@@ -2,30 +2,35 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
 public class CamFollow : MonoBehaviour
 {
     public Transform target;
-    public Vector3 followOffset;
-    public float lookAheadDst = 10;
-    public float smoothTime = .1f;
-    public float rotSmoothSpeed = 3;
+    public Vector3 followOffset = new Vector3(0, 2, -6);
+    public float lookAheadDst = 10f;
+    public float smoothTime = 0.1f;
+    public float rotSmoothSpeed = 6f;
 
-    Vector3 smoothV;
+    Vector3 vel;
 
-
-    
     void LateUpdate()
     {
-        Vector3 targetPos = target.position + target.forward * followOffset.z + target.up * followOffset.y + target.right * followOffset.x;
-        transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref smoothV, smoothTime);
+        if (!target) return;
 
-        Quaternion rot = transform.rotation;
-        transform.LookAt(target.position + target.forward * lookAheadDst);
-        Quaternion targetRot = transform.rotation;
+        // Stable desired pos from target space
+        Vector3 desiredPos = target.TransformPoint(followOffset);
+        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref vel, smoothTime);
 
-        transform.rotation = Quaternion.Slerp(rot,targetRot,Time.deltaTime * rotSmoothSpeed);
+        // Stable look point from target space
+        Vector3 lookPoint = target.TransformPoint(new Vector3(0, 0, lookAheadDst));
+        Quaternion targetRot = Quaternion.LookRotation(lookPoint - transform.position, Vector3.up);
 
-        // Mirror the fog color to the camera background color
-        GetComponent<Camera>().backgroundColor = RenderSettings.fogColor;
+        // Smooth once (no interim LookAt write)
+        float t = 1f - Mathf.Exp(-rotSmoothSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, t);
+
+        // optional cosmetics
+        var cam = GetComponent<Camera>();
+        if (cam) cam.backgroundColor = RenderSettings.fogColor;
     }
 }
