@@ -1,0 +1,68 @@
+#pragma kernel Main
+#include "Includes/Noise.compute"
+#include "Includes/Worley.hlsl"
+
+float4x4 _Transform;
+
+RWStructuredBuffer<uint> GeneratedDensity;
+
+int3 _ChunkDims;
+
+// Iso Level to match Marching Cubes
+float _IsoLevel;
+
+// Simplex
+float _DisplacementStrength;
+float _DisplacementScale;
+int   _Octaves;
+float _Lacunarity;
+float _Persistence;
+
+float3 TransformPoint(float3 p)
+{
+    // rotation+scale
+    float3 r = mul((float3x3)_Transform, p);
+    // translation
+    return r + _Transform._m03_m13_m23;
+}
+
+float SampleFractalNoise(float3 p)
+{
+    float value = 0;
+    float amplitude = 1.0;
+    float frequency = 1.0;
+
+    for (int i = 0; i < _Octaves; i++)
+    {
+        value += snoise(p * frequency / _DisplacementScale) * amplitude;
+        frequency *= _Lacunarity;
+        amplitude *= _Persistence;
+    }
+
+    return value;
+}
+
+float SampleDensity(float3 p)
+{
+    // return clamp(p.x, -1, 1);
+    float worley = SampleWorleyCaves(p);
+    float displacement = SampleFractalNoise(p) * _DisplacementStrength;
+    return worley + displacement;
+}
+
+[numthreads(8,8,8)]
+void Main(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y || id.z >= _ChunkDims.z) return;
+
+    int index = id.z + id.y * _ChunkDims.z + id.x * _ChunkDims.z * _ChunkDims.y;
+
+
+
+    int3 cell = int3(id);
+    float3 p = (float3)(cell);
+    p = TransformPoint(p);
+    float v = (SampleDensity(p)-_IsoLevel);
+
+    GeneratedDensity[index] = v > 0 ? 1 : 0;
+}

@@ -87,8 +87,8 @@ public class MCBaker : MonoBehaviour
             shader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
             shader.SetFloat("_IsoLevel", settings.isoLevel);
             shader.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
-            shader.SetFloats("_NoiseOffset", settings.noiseOffset.x, settings.noiseOffset.y, settings.noiseOffset.z);
-            shader.SetFloats("_NoiseFrequency", settings.noiseFrequency.x, settings.noiseFrequency.y, settings.noiseFrequency.z);
+
+            // Worley
             shader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
             shader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
             shader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);

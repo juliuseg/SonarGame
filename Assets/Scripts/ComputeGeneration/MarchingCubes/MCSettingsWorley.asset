@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5e1fcf70a90e48f789f23946cb7f315, type: 3}
   m_Name: MCSettingsWorley
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
-  scale: {x: 0.25, y: 0.25, z: 0.25}
+  scale: {x: 1, y: 1, z: 1}
   chunkDims: {x: 16, y: 16, z: 16}
   isoLevel: 0.2
   noiseFrequency: {x: 1, y: 1, z: 1}
