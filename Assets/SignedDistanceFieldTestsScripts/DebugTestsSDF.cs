@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class DebugTestsEDT : MonoBehaviour
+public class DebugTestsSDF : MonoBehaviour
 {
     public float[,,] data;
     public ComputeShader densityShader;
@@ -12,6 +12,7 @@ public class DebugTestsEDT : MonoBehaviour
 
     ComputeBuffer densityBuffer;
     ComputeBuffer edtBuffer;
+    ComputeBuffer edtBufferFlipped;
 
     void Start()
     {
@@ -21,6 +22,7 @@ public class DebugTestsEDT : MonoBehaviour
         int total = dims.x * dims.y * dims.z;
         densityBuffer = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
         edtBuffer     = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
+        edtBufferFlipped = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
 
         //Run();
     }
@@ -61,11 +63,26 @@ public class DebugTestsEDT : MonoBehaviour
         edtShader.SetInts("_ChunkDims", dims.x, dims.y, dims.z);
         edtShader.SetFloat("_MaxDistance", 1e9f);
 
-        // Dispatch EDT with normal density
+        // --- Normal EDT ---
         bool flipDensity = false;
         DispatchEDT("EDT_X", dims, new Vector2Int(dims.y, dims.z), true,  true, flipDensity);
         DispatchEDT("EDT_Y", dims, new Vector2Int(dims.x, dims.z), false, false, flipDensity);
         DispatchEDT("EDT_Z", dims, new Vector2Int(dims.x, dims.y), false, false, flipDensity);
+
+        // copy out the result before overwriting it
+        int kCopy = edtShader.FindKernel("CopyBuffer");
+        edtShader.SetInt("_Total", dims.x * dims.y * dims.z);
+        edtShader.SetBuffer(kCopy, "BufferSrc", edtBuffer);
+        edtShader.SetBuffer(kCopy, "BufferDst", edtBufferFlipped);
+        edtShader.Dispatch(kCopy, Mathf.CeilToInt((dims.x*dims.y*dims.z)/64f), 1, 1);
+
+
+        // --- Flipped EDT ---
+        flipDensity = true;
+        DispatchEDT("EDT_X", dims, new Vector2Int(dims.y, dims.z), true,  true, flipDensity);
+        DispatchEDT("EDT_Y", dims, new Vector2Int(dims.x, dims.z), false, false, flipDensity);
+        DispatchEDT("EDT_Z", dims, new Vector2Int(dims.x, dims.y), false, false, flipDensity, true);
+
 
         
 
@@ -74,26 +91,38 @@ public class DebugTestsEDT : MonoBehaviour
         AsyncGPUReadback.Request(edtBuffer, OnReadbackComplete);
     }
 
-    void DispatchEDT(string kernelName, Vector3Int dims, Vector2Int dispatchAxes, bool binarize, bool useExternal, bool flipDensity)
+    void DispatchEDT(
+        string kernelName,
+        Vector3Int dims,
+        Vector2Int dispatchAxes,
+        bool binarize,
+        bool useExternal,
+        bool flipDensity,
+        bool computeSDF = false)
     {
         int k = edtShader.FindKernel(kernelName);
         edtShader.SetInt("_BinarizeInput", binarize ? 1 : 0);
         edtShader.SetInt("_UseExternalInput", useExternal ? 1 : 0);
         edtShader.SetInt("_FlipDensity", flipDensity ? 1 : 0);
-        edtShader.SetInt("_ComputeSDF", 0);
+        edtShader.SetInt("_ComputeSDF", computeSDF ? 1 : 0);
 
-        // always bind both buffers
-        edtShader.SetBuffer(k, "EDTInput",  useExternal ? densityBuffer : edtBuffer);
-        edtShader.SetBuffer(k, "EDTBuffer", edtBuffer);
+        // choose correct output target
+        ComputeBuffer outBuf = computeSDF || !flipDensity ? edtBuffer : edtBufferFlipped;
 
-        // get group sizes
+        // choose input
+        ComputeBuffer inBuf = useExternal
+            ? densityBuffer
+            : (computeSDF ? edtBufferFlipped : outBuf);
+
+        edtShader.SetBuffer(k, "EDTInput", inBuf);
+        edtShader.SetBuffer(k, "EDTBuffer", outBuf);
+
         edtShader.GetKernelThreadGroupSizes(k, out uint tgx, out uint tgy, out uint tgz);
-
-        // dispatch
         int gx = Mathf.CeilToInt(dispatchAxes.x / (float)tgx);
         int gy = Mathf.CeilToInt(dispatchAxes.y / (float)tgy);
         edtShader.Dispatch(k, gx, gy, 1);
     }
+
 
     void OnReadbackComplete(AsyncGPUReadbackRequest req)
     {
@@ -109,11 +138,11 @@ public class DebugTestsEDT : MonoBehaviour
         for (int z = 0; z < sz; z++)
         {
             int i = z + y * sz + x * sz * sy;
-            float val = Mathf.Sqrt(arr[i]);
+            float val = arr[i];
             // normalize for visualization
             Vector3Int dims = settings.chunkDims;
             float maxDims = Mathf.Max(dims.x, dims.y, dims.z);
-            data[x,y,z] = Mathf.Clamp01(val / maxDims);
+            data[x,y,z] = Mathf.Clamp(val / maxDims, -1f, 1f);
 
             
 
@@ -142,7 +171,7 @@ public class DebugTestsEDT : MonoBehaviour
         {
             float d = data[x - minX, y - minY, z - minZ];
             float f = d * colorMultiplier;
-            Gizmos.color = new Color(f, 0f, 0f, 0.3f * Mathf.Clamp01(f));
+            Gizmos.color = new Color(f, -f, 0f, 0.3f * Mathf.Clamp01(Mathf.Abs(f)));
             Vector3 pos = transform.position + new Vector3(x * scale.x, y * scale.y, z * scale.z);
             Gizmos.DrawCube(pos, Vector3.Scale(Vector3.one, settings.scale)*0.9f);
         }
@@ -152,5 +181,7 @@ public class DebugTestsEDT : MonoBehaviour
     {
         densityBuffer?.Release();
         edtBuffer?.Release();
+        edtBufferFlipped?.Release();
     }
+
 }

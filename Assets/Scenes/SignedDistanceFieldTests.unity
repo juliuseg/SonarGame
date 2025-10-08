@@ -130,6 +130,7 @@ GameObject:
   - component: {fileID: 43526091}
   - component: {fileID: 43526090}
   - component: {fileID: 43526092}
+  - component: {fileID: 43526093}
   m_Layer: 0
   m_Name: DebugTester
   m_TagString: Untagged
@@ -173,7 +174,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 43526089}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 16d8db7cf98424e888c354d5a306deed, type: 3}
   m_Name: 
@@ -181,6 +182,23 @@ MonoBehaviour:
   densityShader: {fileID: 7200000, guid: ad6f752c1017f45a0a23d5639214f403, type: 3}
   edtShader: {fileID: 7200000, guid: 15a5535528618463d9e6e9a2bc9b657c, type: 3}
   settings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
+  colorMultiplier: 1
+--- !u!114 &43526093
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 43526089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4aade4a8c044a4c648ff28a24b1c823d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DebugTestsSDF
+  densityShader: {fileID: 7200000, guid: ad6f752c1017f45a0a23d5639214f403, type: 3}
+  edtShader: {fileID: 7200000, guid: 15a5535528618463d9e6e9a2bc9b657c, type: 3}
+  settings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
+  colorMultiplier: 1
 --- !u!1001 &502960160
 PrefabInstance:
   m_ObjectHideFlags: 0

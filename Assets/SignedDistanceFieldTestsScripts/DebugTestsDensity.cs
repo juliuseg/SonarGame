@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class DebugTests : MonoBehaviour
+public class DebugTestsDensity : MonoBehaviour
 {
 
     public float[,,] data = new float[16, 16, 16];

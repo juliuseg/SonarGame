@@ -8,6 +8,7 @@ float _MaxDistance;
 int _BinarizeInput;      // 1 only for first pass
 int _UseExternalInput;   // 1 only for X pass
 int _FlipDensity;        // 0 does not flip, 1 flips. Flips density so 
+int _ComputeSDF; // 1 only for final pass, computes SDF from EDT, uses EDTInput as the flipped density EDT.
 
 RWStructuredBuffer<float> EDTBuffer;     // read/write in-place
 StructuredBuffer<float>   EDTInput;      // read-only, used only on X
@@ -77,9 +78,16 @@ void EDT1D_Line(int fixedA, int fixedB, int axis)
     for (int i = 0; i < n; i++)
     {
         int3 p = (axis == 0) ? int3(i, fixedA, fixedB) :
-                  (axis == 1) ? int3(fixedA, i, fixedB) :
+                (axis == 1) ? int3(fixedA, i, fixedB) :
                                 int3(fixedA, fixedB, i);
-        EDTBuffer[Index(p)] = d[i];
+
+        float val = d[i];
+        if (_ComputeSDF == 1)
+        {
+            float other = EDTInput[Index(p)];
+            val = sqrt(other) - sqrt(val);
+        }
+        EDTBuffer[Index(p)] = val;
     }
 }
 
@@ -102,4 +110,18 @@ void EDT_Z(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y) return; // x=x-lines, y=y-lines
     EDT1D_Line(id.x, id.y, 2);
+}
+
+
+#pragma kernel CopyBuffer
+RWStructuredBuffer<float> BufferDst;
+StructuredBuffer<float>   BufferSrc;
+int _Total;
+
+[numthreads(64,1,1)]
+void CopyBuffer(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Total) return;
+    BufferDst[i] = BufferSrc[i];
 }
