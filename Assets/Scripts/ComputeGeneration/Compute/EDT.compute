@@ -1,0 +1,105 @@
+#pragma kernel EDT_X
+#pragma kernel EDT_Y
+#pragma kernel EDT_Z
+#pragma target 5.0
+
+int3 _ChunkDims;
+float _MaxDistance;
+int _BinarizeInput;      // 1 only for first pass
+int _UseExternalInput;   // 1 only for X pass
+int _FlipDensity;        // 0 does not flip, 1 flips. Flips density so 
+
+RWStructuredBuffer<float> EDTBuffer;     // read/write in-place
+StructuredBuffer<float>   EDTInput;      // read-only, used only on X
+
+int Index(int3 p)
+{
+    return p.z + p.y * _ChunkDims.z + p.x * _ChunkDims.z * _ChunkDims.y;
+}
+
+float ReadAt(int3 p)
+{
+    float v = (_UseExternalInput == 1) ? EDTInput[Index(p)] : EDTBuffer[Index(p)];
+    float binarized = (_BinarizeInput == 1)
+        ? ((_FlipDensity == 1)
+            ? ((v < 0.5) ? 0.0 : _MaxDistance)
+            : ((v > 0.5) ? 0.0 : _MaxDistance))
+        : v;
+    return binarized;
+}
+
+void EDT1D_Line(int fixedA, int fixedB, int axis)
+{
+    int n = (axis == 0) ? _ChunkDims.x : ((axis == 1) ? _ChunkDims.y : _ChunkDims.z);
+
+    // NOTE: requires each axis <= 256. Increase if needed.
+    float f[256], d[256];
+    int   v[256];
+    float zt[257];
+
+    // load
+    [loop]
+    for (int i = 0; i < n; i++)
+    {
+        int3 p = (axis == 0) ? int3(i, fixedA, fixedB) :
+                  (axis == 1) ? int3(fixedA, i, fixedB) :
+                                int3(fixedA, fixedB, i);
+        f[i] = ReadAt(p);
+    }
+
+    // Felzenszwalb 1D
+    int k = 0; v[0] = 0; zt[0] = -_MaxDistance; zt[1] = +_MaxDistance;
+    [loop]
+    for (int q = 1; q < n; q++)
+    {
+        float s;
+        do {
+            int pIdx = v[k];
+            s = ((f[q] + (q*q)) - (f[pIdx] + (pIdx*pIdx))) / (2.0 * (q - pIdx));
+            // GUARD: do not let k go negative
+            if (k > 0 && s <= zt[k]) { k--; } else { break; }
+        } while (true);
+        k++; v[k] = q; zt[k] = s; zt[k+1] = +_MaxDistance;
+    }
+
+    k = 0;
+    [loop]
+    for (int q = 0; q < n; q++)
+    {
+        while (zt[k+1] < q) k++;
+        int pIdx = v[k];
+        float dval = (float)(q - pIdx);
+        d[q] = dval*dval + f[pIdx];
+    }
+
+    // store
+    [loop]
+    for (int i = 0; i < n; i++)
+    {
+        int3 p = (axis == 0) ? int3(i, fixedA, fixedB) :
+                  (axis == 1) ? int3(fixedA, i, fixedB) :
+                                int3(fixedA, fixedB, i);
+        EDTBuffer[Index(p)] = d[i];
+    }
+}
+
+[numthreads(8,8,1)]
+void EDT_X(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ChunkDims.y || id.y >= _ChunkDims.z) return; // x=y-lines, y=z-lines
+    EDT1D_Line(id.x, id.y, 0);
+}
+
+[numthreads(8,8,1)]
+void EDT_Y(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.z) return; // x=x-lines, y=z-lines
+    EDT1D_Line(id.x, id.y, 1);
+}
+
+[numthreads(8,8,1)]
+void EDT_Z(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y) return; // x=x-lines, y=y-lines
+    EDT1D_Line(id.x, id.y, 2);
+}

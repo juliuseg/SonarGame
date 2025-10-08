@@ -31,6 +31,13 @@ public class ChunkLoader : MonoBehaviour
     {
         if (baker == null) baker = GetComponent<MCBaker>();
         if (target == null) target = transform;
+
+        
+    }
+
+    void Start()
+    {
+        
     }
 
     void Update()
@@ -98,23 +105,40 @@ public class ChunkLoader : MonoBehaviour
     private void BuildQueued(Vector3 chunkSize, float radius)
     {
         int built = 0;
+
         while (_buildQueue.Count > 0 && built < maxBuildsPerFrame)
         {
             var coord = _buildQueue.Dequeue();
-            if (_chunks.ContainsKey(coord)) continue;
+
+            // Skip if already loaded
+            if (_chunks.ContainsKey(coord))
+                continue;
 
             Vector3 centerWorld = ChunkCenterWorld(coord, chunkSize);
 
-            // Check again if still within radius
+            // Skip if too far
             float dist = Vector3.Distance(centerWorld, target.position);
-            if (dist > radius) continue;
+            if (dist > radius)
+                continue;
 
-            baker.Run(out Mesh mesh, centerWorld);
+            // Reserve placeholder to prevent double-builds
+            _chunks[coord] = null;
 
-            GameObject go = null;
-            if (mesh != null && mesh.vertexCount > 0)
+            // Launch async GPU job (non-blocking)
+            baker.RunAsync(centerWorld, (mesh) =>
             {
-                go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
+                // Safety: chunk could have been unloaded while GPU was working
+                if (!_chunks.ContainsKey(coord))
+                    return;
+
+                if (mesh == null || mesh.vertexCount == 0)
+                {
+                    _chunks.Remove(coord);
+                    return;
+                }
+
+                // Create chunk GameObject
+                var go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
                 go.transform.SetParent(transform, false);
                 go.transform.localPosition = Vector3.zero;
 
@@ -122,18 +146,23 @@ public class ChunkLoader : MonoBehaviour
                 var mr = go.AddComponent<MeshRenderer>();
                 var mc = go.AddComponent<MeshCollider>();
 
+                print("Mesh loaded at: " + coord);
+
                 mf.sharedMesh = mesh;
                 mc.sharedMesh = mesh;
 
+                // Copy parent material
                 var parentRenderer = baker.GetComponent<MeshRenderer>();
-                if (parentRenderer != null)
+                if (parentRenderer)
                     mr.sharedMaterial = parentRenderer.sharedMaterial;
-            }
 
-            _chunks[coord] = go;
+                _chunks[coord] = go;
+            });
+
             built++;
         }
     }
+
 
     // Replace ReloadAllTerrain
     private void ReloadAllTerrain()

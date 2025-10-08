@@ -4,7 +4,7 @@ using UnityEngine.Rendering;
 public class DebugTests : MonoBehaviour
 {
 
-    public uint[,,] data = new uint[16, 16, 16];
+    public float[,,] data = new float[16, 16, 16];
 
     public ComputeShader densityShader;
 
@@ -14,7 +14,7 @@ public class DebugTests : MonoBehaviour
 
     void Start()
     {
-        data = new uint[settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z];
+        data = new float[settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z];
     }
 
     void Update()
@@ -26,7 +26,7 @@ public class DebugTests : MonoBehaviour
         // Start by setting the buffer
         if (densityBuffer == null)
         {
-            densityBuffer = new ComputeBuffer(data.Length, sizeof(uint), ComputeBufferType.Structured);
+            densityBuffer = new ComputeBuffer(data.Length, sizeof(float), ComputeBufferType.Structured);
         }
 
         int id = densityShader.FindKernel("Main");
@@ -78,7 +78,7 @@ public class DebugTests : MonoBehaviour
     void OnReadbackComplete(AsyncGPUReadbackRequest req)
     {
         if (req.hasError) return;
-        var arr = req.GetData<uint>();
+        var arr = req.GetData<float>();
         int sizeX = data.GetLength(0);
         int sizeY = data.GetLength(1);
         int sizeZ = data.GetLength(2);
@@ -97,32 +97,6 @@ public class DebugTests : MonoBehaviour
     }
 
 
-    void SetTestData(){
-        int sizeX = data.GetLength(0);
-        int sizeY = data.GetLength(1);
-        int sizeZ = data.GetLength(2);
-        int minX = -sizeX / 2;
-        int minY = -sizeY / 2;
-        int minZ = -sizeZ / 2;
-        int maxX = minX + sizeX - 1;
-        int maxY = minY + sizeY - 1;
-        int maxZ = minZ + sizeZ - 1;
-
-        for (int x = minX; x <= maxX; x++)
-        {
-            for (int y = minY; y <= maxY; y++)
-            {
-                for (int z = minZ; z <= maxZ; z++)
-                {
-                    // High at (0,0,0), smaller outwards till radius 3 (sphere SDF)
-                    // Value is 1 at center, 0 at radius 3, negative outside
-                    float dist = Mathf.Sqrt((x - 2) * (x - 2) + (y - 2) * (y - 2) + (z - 2) * (z - 2));
-                    float dist2 = Mathf.Sqrt((x + 2) * (x + 2) + (y - 2) * (y - 2) + (z - 2) * (z - 2));
-                    data[x + 8, y + 8, z + 8] = (uint)(Mathf.Clamp01(1f - dist / 3f) - Mathf.Clamp01(1f - dist2 / 3f) > 0 ? 1 : 0);
-                }
-            }
-        }
-    }
     private void OnDrawGizmos()
     {
         int sizeX = data.GetLength(0);
@@ -141,11 +115,11 @@ public class DebugTests : MonoBehaviour
             {
                 for (int z = minZ; z <= maxZ; z++)
                 {
-                    uint d = data[x+8, y+8, z+8];
+                    float d = data[x-minX, y-minY, z-minZ];
                     Gizmos.color = new Color(Mathf.Clamp01(d), 0f, 0f, Mathf.Clamp01(d)*0.5f); // Transparent red
-                    Vector3 pos = transform.position + new Vector3(x, y, z);
-                    
-                    Gizmos.DrawCube(pos, Vector3.one);
+                    Vector3 pos = transform.position + new Vector3(x*settings.scale.x, y*settings.scale.y, z*settings.scale.z);
+
+                    Gizmos.DrawCube(pos, Vector3.Scale(Vector3.one, settings.scale));
                 }
             }
         }

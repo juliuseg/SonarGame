@@ -45,119 +45,123 @@ public class MCBaker : MonoBehaviour
     
     
 
-    public bool Run(out Mesh generatedMesh, Vector3 position)
+    public void RunAsync(Vector3 position, System.Action<Mesh> onComplete)
     {
-        generatedMesh = null;
-
-        ComputeBuffer triangleBuffer = null;
-        ComputeBuffer countBuf = null;
-        ComputeBuffer minMax = null;
-
-        ComputeBuffer candidateDownBuffer = null;
-        ComputeBuffer candidateSideBuffer = null;
-        ComputeBuffer candidateUpBuffer = null;
-
+        ComputeBuffer triBuf = null, cntBuf = null;
+        ComputeBuffer candDown = null, candSide = null, candUp = null, minMax = null;
 
         try
         {
-            int maxCells      = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
-            int maxTriangles  = maxCells * 5;                // MC worst-case
-            if (maxTriangles == 0) return false;
+            int maxCells = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
+            int maxTriangles = maxCells * 5;
+            if (maxTriangles == 0) { onComplete?.Invoke(null); return; }
 
-            triangleBuffer = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
-            triangleBuffer.SetCounterValue(0);
+            triBuf = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
+            triBuf.SetCounterValue(0);
 
-            candidateDownBuffer = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append);
-            candidateDownBuffer.SetCounterValue(0);
+            // other buffers if you still need them on GPU
+            candDown = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candDown.SetCounterValue(0);
+            candSide = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candSide.SetCounterValue(0);
+            candUp   = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candUp.SetCounterValue(0);
+            minMax   = new ComputeBuffer(2, sizeof(uint), ComputeBufferType.Structured);
 
-            candidateSideBuffer = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append);
-            candidateSideBuffer.SetCounterValue(0);
+            var shaderInstance = Instantiate(shader);
+            int id = shaderInstance.FindKernel("Main");
 
-            candidateUpBuffer = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append);
-            candidateUpBuffer.SetCounterValue(0);
-
-            int id = shader.FindKernel("Main");
-            shader.SetBuffer(id, "_GeneratedTriangles", triangleBuffer);
+            // Use shaderInstance everywhere from here
+            shaderInstance.SetBuffer(id, "_GeneratedTriangles", triBuf);
+            shaderInstance.SetBuffer(id, "_CandidatesDown", candDown);
+            shaderInstance.SetBuffer(id, "_CandidatesSide", candSide);
+            shaderInstance.SetBuffer(id, "_CandidatesUp", candUp);
+            shaderInstance.SetBuffer(id, "_MinMax", minMax);
 
             Vector3 scale = settings.scale;
             Vector3 dims  = settings.chunkDims;
             Vector3 origin = position - new Vector3(scale.x * dims.x / 2f, scale.y * dims.y / 2f, scale.z * dims.z / 2f);
 
             // Common
-            shader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
-            shader.SetFloat("_IsoLevel", settings.isoLevel);
-            shader.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
+            shaderInstance.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
+            shaderInstance.SetFloat("_IsoLevel", settings.isoLevel);
+            shaderInstance.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
 
             // Worley
-            shader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
-            shader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
-            shader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
-            shader.SetInt("_WorleySeed", settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed);
+            shaderInstance.SetFloat("_WorleyNoiseScale", settings.noiseScale);
+            shaderInstance.SetFloat("_WorleyVerticalScale", settings.verticalScale);
+            shaderInstance.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
+            shaderInstance.SetInt("_WorleySeed", settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed);
 
             // Displacement
-            shader.SetFloat("_DisplacementStrength", settings.displacementStrength);
-            shader.SetFloat("_DisplacementScale", settings.displacementScale);
-            shader.SetInt("_Octaves", settings.octaves);
-            shader.SetFloat("_Lacunarity", settings.lacunarity);
-            shader.SetFloat("_Persistence", settings.persistence);
+            shaderInstance.SetFloat("_DisplacementStrength", settings.displacementStrength);
+            shaderInstance.SetFloat("_DisplacementScale", settings.displacementScale);
+            shaderInstance.SetInt("_Octaves", settings.octaves);
+            shaderInstance.SetFloat("_Lacunarity", settings.lacunarity);
+            shaderInstance.SetFloat("_Persistence", settings.persistence);
 
             // Candidates
-            shader.SetBuffer(id, "_CandidatesDown", candidateDownBuffer);
-            shader.SetBuffer(id, "_CandidatesSide", candidateSideBuffer);
-            shader.SetBuffer(id, "_CandidatesUp", candidateUpBuffer);
-            shader.SetFloat("_CosUp", settings.cosUp);
-            shader.SetFloat("_CosDown", settings.cosDown);
-            shader.SetFloat("_CosSide", settings.cosSide);
-            shader.SetInt("_ThresholdUINT", (int)(settings.foliageDensity * 4294967296.0));
-            shader.SetFloats("_Up", 0f, 1f, 0f);
+            shaderInstance.SetFloat("_CosUp", settings.cosUp);
+            shaderInstance.SetFloat("_CosDown", settings.cosDown);
+            shaderInstance.SetFloat("_CosSide", settings.cosSide);
+            shaderInstance.SetInt("_ThresholdUINT", (int)(settings.foliageDensity * 4294967296.0));
+            shaderInstance.SetFloats("_Up", 0f, 1f, 0f);
 
-            minMax = new ComputeBuffer(2, sizeof(uint), ComputeBufferType.Structured);
-            minMax.SetData(new uint[] { 0x7f7fffff, 0x00000000 });
-            shader.SetBuffer(id, "_MinMax", minMax);
-
-            shader.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
+            // Dispatch
+            shaderInstance.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
             int dx = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
             int dy = Mathf.CeilToInt((float)settings.chunkDims.y / tgY);
             int dz = Mathf.CeilToInt((float)settings.chunkDims.z / tgZ);
-            shader.Dispatch(id, dx, dy, dz);
+            shaderInstance.Dispatch(id, dx, dy, dz);
 
-            // optional: this readback stalls; keep if you need it
-            var mm = new uint[2];
-            minMax.GetData(mm);
 
-            int downCount = GetAppendBufferCount(candidateDownBuffer);
-            int sideCount = GetAppendBufferCount(candidateSideBuffer);
-            int upCount = GetAppendBufferCount(candidateUpBuffer);
-            int triCount = GetAppendBufferCount(triangleBuffer);
+            // read appended count asynchronously
+            cntBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+            ComputeBuffer.CopyCount(triBuf, cntBuf, 0);
 
-            // Print the first 10 test floats of candidateDownBuffer
-            // string debugInfo = $"TriCount: {triCount}, DownCount: {downCount}, SideCount: {sideCount}, UpCount: {upCount}";
-            
-            // print(debugInfo);
+            AsyncGPUReadback.Request(cntBuf, reqCount =>
+            {
+                try
+                {
+                    if (reqCount.hasError) { onComplete?.Invoke(null); return; }
+                    uint triCount = reqCount.GetData<uint>()[0];
+                    if (triCount == 0) { onComplete?.Invoke(null); return; }
 
-            // Get candidateUpBuffer data
-            var upData = new Candidate[upCount];
-            if (upCount > 0) candidateUpBuffer.GetData(upData, 0, 0, upCount);
+                    int bytes = (int)triCount * TRIANGLE_STRIDE;
 
-            // Instance grass based on the upData!
-            
-
-            var tris = triCount > 0 ? new MCTriangle[triCount] : System.Array.Empty<MCTriangle>();
-            if (triCount > 0) triangleBuffer.GetData(tris, 0, 0, triCount);
-
-            generatedMesh = ComposeMesh(tris);
-            return true;
+                    // now read exactly 'triCount' triangles
+                    AsyncGPUReadback.Request(triBuf, bytes, 0, reqTris =>
+                    {
+                        try
+                        {
+                            if (reqTris.hasError) { onComplete?.Invoke(null); return; }
+                            var tris = reqTris.GetData<MCTriangle>();
+                            var mesh = ComposeMesh(tris.ToArray());   // length == triCount
+                            onComplete?.Invoke(mesh);
+                        }
+                        finally
+                        {
+                            triBuf?.Release();
+                            candDown?.Release(); candSide?.Release(); candUp?.Release();
+                            minMax?.Release(); cntBuf?.Release();
+                        }
+                    });
+                }
+                catch
+                {
+                    triBuf?.Release();
+                    candDown?.Release(); candSide?.Release(); candUp?.Release();
+                    minMax?.Release(); cntBuf?.Release();
+                    onComplete?.Invoke(null);
+                }
+            });
         }
-        finally
+        catch
         {
-            if (countBuf != null) countBuf.Release();
-            if (triangleBuffer != null) triangleBuffer.Release();
-            if (minMax != null) minMax.Release();
-            if (candidateDownBuffer != null) candidateDownBuffer.Release();
-            if (candidateSideBuffer != null) candidateSideBuffer.Release();
-            if (candidateUpBuffer != null) candidateUpBuffer.Release();
+            triBuf?.Release();
+            candDown?.Release(); candSide?.Release(); candUp?.Release();
+            minMax?.Release(); cntBuf?.Release();
+            onComplete?.Invoke(null);
         }
     }
+
 
 
 

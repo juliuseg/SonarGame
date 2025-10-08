@@ -4,7 +4,7 @@
 
 float4x4 _Transform;
 
-RWStructuredBuffer<uint> GeneratedDensity;
+RWStructuredBuffer<float> GeneratedDensity;
 
 int3 _ChunkDims;
 
@@ -64,5 +64,5 @@ void Main(uint3 id : SV_DispatchThreadID)
     p = TransformPoint(p);
     float v = (SampleDensity(p)-_IsoLevel);
 
-    GeneratedDensity[index] = v > 0 ? 1 : 0;
+    GeneratedDensity[index] = v > 0 ? 1.0f : 0.0f;
 }
