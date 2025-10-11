@@ -418,7 +418,7 @@ MonoBehaviour:
   - {fileID: 2100000, guid: af150c9bbc43b42d6922ec0840e8ac24, type: 2}
   - {fileID: 2100000, guid: 21d4f3fbcb4694838be90be5ae710e31, type: 2}
   - {fileID: 2100000, guid: 1de7ce8b4599c43e4884d07bdd30f167, type: 2}
-  instanceCount: 100
+  instanceCount: 10000
   speeds: []
   phases: []
   phaseProperty: _Phase

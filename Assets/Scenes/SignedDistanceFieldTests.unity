@@ -247,6 +247,26 @@ PrefabInstance:
       propertyPath: maxBuildsPerFrame
       value: 4
       objectReference: {fileID: 0}
+    - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: colorWall.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: colorFloor.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: colorCieling.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: colorFloorThreshold
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: colorCielingThreshold
+      value: -0.5
+      objectReference: {fileID: 0}
     - target: {fileID: 4393061782156441770, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -287,6 +307,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 7756084975321153991, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: d7051d23e55154a599201a08396b0f2a, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

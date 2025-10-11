@@ -1,13 +1,3 @@
-// Terrain Baker
-// We tell the compute shader the terrain settings
-// Triangels of the terrain: heigh*width * 2
-// Vertices of the terrain: heigh*width * 2(triangles) * 3(three vertices per triangle)
-// Indices of the terrain: heigh*width * 2(triangles) * 3(three indices per triangle)
-
-// We then dispatch a shader to generate the terrain: We dispatch the number of triangles. And make sure its right in respect to the thread group size.
-
-
-
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
@@ -19,6 +9,12 @@ public class MCBaker : MonoBehaviour
     public ComputeShader shader;
 
     public MCSettings settings;
+
+    public Vector3 colorCieling;
+    public Vector3 colorFloor;
+    public Vector3 colorWall;
+    public float colorCielingThreshold;
+    public float colorFloorThreshold;
     // public Vector3Int chunkCount;
 
     // public bool runConstant = true;
@@ -29,25 +25,19 @@ public class MCBaker : MonoBehaviour
         public Vector3 position0;
         public Vector3 position1;
         public Vector3 position2;
+        public Vector3 color;
 
     }
 
-    private struct Candidate {
-        public Vector3 pos;
-        public Vector3 n;
-    }
     
-    private const int TRIANGLE_STRIDE = sizeof(float) * (3*3);
-
-    // private const int CANDIDATE_STRIDE = sizeof(float) * (3*2+1);
-    private const int CANDIDATE_STRIDE = sizeof(float) * (3*2);
+    private const int TRIANGLE_STRIDE = sizeof(float) * (3*3+3);
 
     
     
 
-    public void RunAsync(Vector3 position, System.Action<Mesh> onComplete)
+    public void RunAsync(Vector3 position, System.Action<Mesh, uint> onComplete)
     {
-        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, minMax = null;
+        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null;
 
         // use the asset directly; no Instantiate (or Destroy it if you insist on instancing)
         var cs = shader;
@@ -59,30 +49,27 @@ public class MCBaker : MonoBehaviour
             candDown?.Release(); candDown = null;
             candSide?.Release(); candSide = null;
             candUp?.Release();   candUp = null;
-            minMax?.Release();   minMax = null;
+            biomeMask?.Release(); biomeMask = null;
         }
 
         try
         {
             int maxCells = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
             int maxTriangles = maxCells * 5;
-            if (maxTriangles == 0) { onComplete?.Invoke(null); return; }
+            if (maxTriangles == 0) { onComplete?.Invoke(null, 0); return; }
 
             triBuf = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
             triBuf.SetCounterValue(0);
 
-            candDown = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candDown.SetCounterValue(0);
-            candSide = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candSide.SetCounterValue(0);
-            candUp   = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candUp.SetCounterValue(0);
-            minMax   = new ComputeBuffer(2, sizeof(uint), ComputeBufferType.Structured);
 
             int id = cs.FindKernel("Main");
 
             cs.SetBuffer(id, "_GeneratedTriangles", triBuf);
-            cs.SetBuffer(id, "_CandidatesDown",     candDown);
-            cs.SetBuffer(id, "_CandidatesSide",     candSide);
-            cs.SetBuffer(id, "_CandidatesUp",       candUp);
-            cs.SetBuffer(id, "_MinMax",             minMax);
+
+            biomeMask = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Structured);
+            uint[] zero = { 0 };
+            biomeMask.SetData(zero);
+            cs.SetBuffer(id, "_BiomeMask", biomeMask);
 
             Vector3 scale = settings.scale;
             Vector3 dims  = settings.chunkDims;
@@ -103,10 +90,12 @@ public class MCBaker : MonoBehaviour
             cs.SetFloat("_Lacunarity", settings.lacunarity);
             cs.SetFloat("_Persistence", settings.persistence);
 
-            cs.SetFloat("_CosUp", settings.cosUp);
-            cs.SetFloat("_CosDown", settings.cosDown);
-            cs.SetFloat("_CosSide", settings.cosSide);
-            cs.SetInt("_ThresholdUINT", (int)(settings.foliageDensity * 4294967296.0));
+            cs.SetFloats("_ColorCieling", colorCieling.x, colorCieling.y, colorCieling.z);
+            cs.SetFloats("_ColorFloor", colorFloor.x, colorFloor.y, colorFloor.z);
+            cs.SetFloats("_ColorWall", colorWall.x, colorWall.y, colorWall.z);
+            cs.SetFloat("_ColorCielingThreshold", colorCielingThreshold);
+            cs.SetFloat("_ColorFloorThreshold", colorFloorThreshold);
+
             cs.SetFloats("_Up", 0f, 1f, 0f);
 
             cs.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
@@ -125,7 +114,7 @@ public class MCBaker : MonoBehaviour
                     if (reqCount.hasError)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null);
+                        onComplete?.Invoke(null, 0);
                         return;
                     }
 
@@ -133,7 +122,7 @@ public class MCBaker : MonoBehaviour
                     if (triCount == 0)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null);
+                        onComplete?.Invoke(null, 0);
                         return;
                     }
 
@@ -146,13 +135,32 @@ public class MCBaker : MonoBehaviour
                             if (reqTris.hasError)
                             {
                                 ReleaseAll();
-                                onComplete?.Invoke(null);
+                                onComplete?.Invoke(null, 0);
                                 return;
                             }
 
                             var tris = reqTris.GetData<MCTriangle>();
                             var mesh = ComposeMesh(tris.ToArray());
-                            onComplete?.Invoke(mesh);
+
+                            AsyncGPUReadback.Request(biomeMask, reqBiome =>
+                            {
+                                try
+                                {
+                                    if (reqBiome.hasError)
+                                    {
+                                        ReleaseAll();
+                                        onComplete?.Invoke(mesh, 0);
+                                        return;
+                                    }
+
+                                    uint mask = reqBiome.GetData<uint>()[0];
+                                    onComplete?.Invoke(mesh, mask);
+                                }
+                                finally
+                                {
+                                    ReleaseAll();
+                                }
+                            });
                         }
                         finally
                         {
@@ -163,14 +171,14 @@ public class MCBaker : MonoBehaviour
                 catch
                 {
                     ReleaseAll();
-                    onComplete?.Invoke(null);
+                    onComplete?.Invoke(null, 0);
                 }
             });
         }
         catch
         {
             ReleaseAll();
-            onComplete?.Invoke(null);
+            onComplete?.Invoke(null, 0);
         }
     }
 
@@ -199,6 +207,15 @@ public class MCBaker : MonoBehaviour
 
         mesh.SetVertices(v);
         mesh.SetIndices(indices, MeshTopology.Triangles, 0, true);
+
+        // Set all vertex colors to green
+        var colors = new Color[v.Length];
+        for (int i = 0; i < colors.Length; i++)
+        {
+            colors[i] = new Color(triangles[i/3].color.x, triangles[i/3].color.y, triangles[i/3].color.z);
+        }
+        mesh.SetColors(colors);
+
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
         return mesh;

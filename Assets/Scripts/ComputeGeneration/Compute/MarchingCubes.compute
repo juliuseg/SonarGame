@@ -2,17 +2,16 @@
 #include "Includes/MarchTables.compute"
 #include "Includes/Noise.compute"
 #include "Includes/Worley.hlsl"
+#include "Includes/1dWorleyBiome.hlsl"
 
 struct MCTriangle { 
     float3 positionWS0; 
     float3 positionWS1; 
     float3 positionWS2; 
+
+    float3 colorWS;
 };
 
-struct Candidate {
-    float3 pos;
-    float3 n;
-};
 static const int3 cornerOffsets[8] = {
     int3(0,0,0), // 0
     int3(1,0,0), // 1
@@ -33,22 +32,18 @@ uint3 _ChunkDims;
 AppendStructuredBuffer<MCTriangle> _GeneratedTriangles;
 float3 _NoiseOffset;
 float3 _NoiseFrequency;  // higher = denser features
-RWStructuredBuffer<uint> _MinMax; // [0]=min, [1]=max
+// RWStructuredBuffer<uint> _MinMax; // [0]=min, [1]=max
 float _DisplacementStrength;
 float _DisplacementScale;
 int   _Octaves;
 float _Lacunarity;
 float _Persistence;
 
-float3 _Up;
-float _CosUp;
-float _CosDown;
-float _CosSide;
-uint _ThresholdUINT;
+RWStructuredBuffer<uint> _BiomeMask; // length = 1
 
-AppendStructuredBuffer<Candidate> _CandidatesDown;
-AppendStructuredBuffer<Candidate> _CandidatesSide;
-AppendStructuredBuffer<Candidate> _CandidatesUp;
+float3 _Up;
+
+
 
 
 // simple PCG hash
@@ -71,29 +66,35 @@ void AppendTriangle(float3 pos, float3 pos1, float3 pos2, uint triSeed)
     t.positionWS0 = pos;
     t.positionWS1 = pos1;
     t.positionWS2 = pos2;
-    _GeneratedTriangles.Append(t);
 
     // Calculate area of triangle
-    float3 ab = pos1 - pos;
-    float3 ac = pos2 - pos;
-    float3 n = normalize(cross(ab, ac));
+    // float3 ab = pos1 - pos;
+    // float3 ac = pos2 - pos;
+    // float3 n = normalize(cross(ab, ac));
 
-    Candidate cand;
-    cand.pos = c;
-    cand.n   = n;
 
-    if (dot(n, _Up) < -_CosDown)
-    {
-        _CandidatesDown.Append(cand);
-    } 
-    else if (dot(n, _Up) > _CosUp)
-    {
-        _CandidatesUp.Append(cand);
-    } 
-    else 
-    {
-        _CandidatesSide.Append(cand);
-    } 
+    float scale = 1.0 / 30.0;
+    float border = 0.2; // fraction of each cell reserved as buffer
+    float4 w = worley1D_biome_buffered(c.x * scale, border);
+
+    // Blend only within the buffer width
+    float diff = w.y - w.x;
+    float blend = saturate(1.0 - diff / border);
+    blend *= 0.5; // keep same 0–0.5 range if desired
+
+    t.colorWS = float3(w.z, w.w, blend);
+
+
+    // inside your shader
+    uint biomeIndex = (uint)w.z;              // convert float biome ID to int
+    uint bit = 1u << biomeIndex;              // one-hot bit mask
+    InterlockedOr(_BiomeMask[0], bit);        // atomically set bit
+
+
+    // t.colorWS = float3(2, 0, 0);
+
+
+    _GeneratedTriangles.Append(t);
 
  
 }
@@ -151,8 +152,8 @@ void Main(uint3 id : SV_DispatchThreadID)
         cornerPos[i] = p;
         cornerValues[i] = v;
 
-        InterlockedMin(_MinMax[0], asuint(v));
-        InterlockedMax(_MinMax[1], asuint(v));
+        // InterlockedMin(_MinMax[0], asuint(v));
+        // InterlockedMax(_MinMax[1], asuint(v));
     }
 
     int cubeIndex = 0;

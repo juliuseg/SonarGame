@@ -131,7 +131,7 @@ public class ChunkLoader : MonoBehaviour
             if (centerWorld.y - chunkHalfHeight < waterLevel){
 
                 // Launch async GPU job (non-blocking)
-                baker.RunAsync(centerWorld, (mesh) =>
+                baker.RunAsync(centerWorld, (mesh, mask) =>
                 {
                     // Safety: chunk could have been unloaded while GPU was working
                     if (!chunkManager.TryGetChunk(coord, out var chunk))
@@ -147,7 +147,7 @@ public class ChunkLoader : MonoBehaviour
                     }
 
                     // Create chunk GameObject
-                    var go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
+                    var go = new GameObject($"Chunk_{MaskToString(mask)}_{coord.x}_{coord.y}_{coord.z}");
                     go.transform.SetParent(transform, false);
                     go.transform.localPosition = Vector3.zero;
 
@@ -256,6 +256,17 @@ public class ChunkLoader : MonoBehaviour
         // interpolate between surface and deep
         float t = Mathf.InverseLerp(waterLevel, deepLevel, y);
         return Mathf.Lerp(surfaceRadius, deepRadius, t);
+    }
+
+    private string MaskToString(uint mask)
+    {
+        System.Text.StringBuilder sb = new();
+        for (int i = 0; i < 32; i++)
+        {
+            if ((mask & (1u << i)) != 0)
+                sb.Append(i);
+        }
+        return sb.Length > 0 ? sb.ToString() : "None";
     }
 
 
