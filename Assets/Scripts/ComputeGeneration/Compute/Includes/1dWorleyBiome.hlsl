@@ -18,7 +18,7 @@ float4 worley1D_biome_buffered(float x, float borderFrac)
     float innerMax = 1.0 - borderFrac;
     float innerSize = innerMax - innerMin;
 
-    [unroll]
+    // [unroll]
     for (int offset = -1; offset <= 1; offset++)
     {
         float cell = i + offset;

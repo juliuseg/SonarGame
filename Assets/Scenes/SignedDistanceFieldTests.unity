@@ -1306,7 +1306,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: turningStrenght
-      value: 0.1
+      value: 0.3
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: wallFollowRadius

@@ -61,7 +61,7 @@ public class ChunkLoader : MonoBehaviour
 
 
         // Debug chunks
-        print($"Chunks: {chunkManager.chunks.Count}  Queue: {_buildQueue.Count}  Pending: {_pending.Count}");
+        // print($"Chunks: {chunkManager.chunks.Count}  Queue: {_buildQueue.Count}  Pending: {_pending.Count}");
     }
 
 

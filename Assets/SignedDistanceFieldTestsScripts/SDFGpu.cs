@@ -59,19 +59,35 @@ public sealed class SDFGpu : IDisposable
 
         // 1) density
         densityShader.SetBuffer(kDensity, "GeneratedDensity", densityBuf);
+
         Vector3 origin = position - Vector3.Scale(settings.scale, halo) * 0.5f;
         densityShader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, settings.scale));
+
         densityShader.SetInts("_ChunkDims", halo.x, halo.y, halo.z);
+
         densityShader.SetFloat("_IsoLevel", settings.isoLevel);
+
         densityShader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
         densityShader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
         densityShader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
         densityShader.SetInt("_WorleySeed", settings.seed == 0 ? UnityEngine.Random.Range(0, 1_000_000) : (int)settings.seed);
+
         densityShader.SetFloat("_DisplacementStrength", settings.displacementStrength);
         densityShader.SetFloat("_DisplacementScale", settings.displacementScale);
         densityShader.SetInt("_Octaves", settings.octaves);
         densityShader.SetFloat("_Lacunarity", settings.lacunarity);
         densityShader.SetFloat("_Persistence", settings.persistence);
+
+        densityShader.SetFloat("_BiomeScale", settings.biomeScale);
+        densityShader.SetFloat("_BiomeBorder", settings.biomeBorder);
+        densityShader.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
+        densityShader.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
+
+        float[] biomeOffsets = { 0.0f, -0.2f, -0.31f };
+        ComputeBuffer biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float));
+        biomeBuffer.SetData(biomeOffsets);
+        densityShader.SetBuffer(kDensity, "_BiomeDensityOffsets", biomeBuffer);
+
         densityShader.Dispatch(
             kDensity,
             Mathf.CeilToInt(halo.x / (float)tgDX),
@@ -109,6 +125,7 @@ public sealed class SDFGpu : IDisposable
                 SafeRelease(densityBuf);
                 SafeRelease(edtOutBuf);
                 SafeRelease(edtInBuf);
+                SafeRelease(biomeBuffer);
             }
 
             try

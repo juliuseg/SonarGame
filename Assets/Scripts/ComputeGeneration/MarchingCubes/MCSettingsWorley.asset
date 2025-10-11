@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
   scale: {x: 0.5, y: 0.5, z: 0.5}
   chunkDims: {x: 32, y: 32, z: 32}
-  isoLevel: 0.2
+  isoLevel: 0.1
   noiseFrequency: {x: 1, y: 1, z: 1}
   noiseOffset: {x: 0, y: 0, z: 0}
   noiseScale: 0.03
@@ -30,4 +30,12 @@ MonoBehaviour:
   cosDown: 0.8
   cosSide: 0.3
   foliageDensity: 0.1
+  biomeScale: 50
+  biomeBorder: 10
+  biomeDisplacementStrength: 0.4
+  biomeDisplacementScale: 0.01
+  biomeSettings:
+  - {fileID: 11400000, guid: b65d370dc97b7479db6973ef5458480a, type: 2}
+  - {fileID: 11400000, guid: 9b9c2df6f2f514607836ef76a653e701, type: 2}
+  - {fileID: 11400000, guid: 499fa23d7cd544f0b897e0052be2757f, type: 2}
   halo: 8

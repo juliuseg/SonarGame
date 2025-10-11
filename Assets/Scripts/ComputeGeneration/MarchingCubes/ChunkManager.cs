@@ -98,7 +98,7 @@ public class ChunkManager
         Vector3Int coord = WorldToChunk(worldPos);
         if (!TryGetChunk(coord, out var baseChunk) || baseChunk.sdfData == null)
         {
-            Debug.LogError($"Missing chunk or SDF data for world position: {worldPos}");
+            Debug.Log($"Missing chunk or SDF data for world position: {worldPos}");
             return false;
         }
 

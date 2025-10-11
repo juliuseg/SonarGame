@@ -61,6 +61,7 @@ Material:
     m_Colors:
     - _GreenSandColor: {r: 0.048926905, g: 0.5566038, b: 0.013127446, a: 1}
     - _RedSandColor: {r: 0.6981132, g: 0.17029682, b: 0.14159843, a: 1}
+    - _RockColor: {r: 0.2830189, g: 0.2830189, b: 0.2830189, a: 1}
     - _SandColor: {r: 0.8679245, g: 0.66514236, b: 0.20060521, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

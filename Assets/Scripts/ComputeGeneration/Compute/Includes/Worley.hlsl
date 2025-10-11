@@ -30,9 +30,10 @@ static float3 GetCellPoint(int3 cell, uint seed) {
 static float3 WorleyF123Sq(float3 p, uint seed) {
     int3 baseCell = (int3)floor(p);
     float3 f = float3(1e30, 1e30, 1e30);   // big
-    [unroll] for (int dz=-1; dz<=1; dz++)
-    [unroll] for (int dy=-1; dy<=1; dy++)
-    [unroll] for (int dx=-1; dx<=1; dx++) {
+    for (int dz=-1; dz<=1; dz++) // [unroll] add before loop
+    for (int dy=-1; dy<=1; dy++) // [unroll] add before loop   
+    for (int dx=-1; dx<=1; dx++) // [unroll] add before loop
+    {
         int3 c = baseCell + int3(dx,dy,dz);
         float3 d = GetCellPoint(c, seed) - p;
         float d2 = dot(d,d);               // no sqrt

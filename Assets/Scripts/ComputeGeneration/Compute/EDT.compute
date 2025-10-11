@@ -140,7 +140,7 @@ int Index3D(int3 p, int3 dims)
 
 [numthreads(64,1,1)]
 void ComputeSDFWithHalos(uint3 id : SV_DispatchThreadID)
-{
+{ 
     uint flat = id.x;
     int total = _ChunkDims.x * _ChunkDims.y * _ChunkDims.z;
     if (flat >= total) return;

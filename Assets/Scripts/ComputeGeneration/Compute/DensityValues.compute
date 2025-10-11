@@ -1,6 +1,7 @@
 #pragma kernel Main
-#include "Includes/Noise.compute"
-#include "Includes/Worley.hlsl"
+// #include "Includes/Noise.compute"
+// #include "Includes/Worley.hlsl"
+#include "Includes/SampleDensity.hlsl"
 
 float4x4 _Transform;
 
@@ -12,11 +13,11 @@ int3 _ChunkDims;
 float _IsoLevel;
 
 // Simplex
-float _DisplacementStrength;
-float _DisplacementScale;
-int   _Octaves;
-float _Lacunarity;
-float _Persistence;
+// float _DisplacementStrength;
+// float _DisplacementScale;
+// int   _Octaves;
+// float _Lacunarity;
+// float _Persistence;
 
 float3 TransformPoint(float3 p)
 {
@@ -26,29 +27,29 @@ float3 TransformPoint(float3 p)
     return r + _Transform._m03_m13_m23;
 }
 
-float SampleFractalNoise(float3 p)
-{
-    float value = 0;
-    float amplitude = 1.0;
-    float frequency = 1.0;
+// float SampleFractalNoise(float3 p)
+// {
+//     float value = 0;
+//     float amplitude = 1.0;
+//     float frequency = 1.0;
 
-    for (int i = 0; i < _Octaves; i++)
-    {
-        value += snoise(p * frequency / _DisplacementScale) * amplitude;
-        frequency *= _Lacunarity;
-        amplitude *= _Persistence;
-    }
+//     for (int i = 0; i < _Octaves; i++)
+//     {
+//         value += snoise(p * frequency / _DisplacementScale) * amplitude;
+//         frequency *= _Lacunarity;
+//         amplitude *= _Persistence;
+//     }
 
-    return value;
-}
+//     return value;
+// }
 
-float SampleDensity(float3 p)
-{
-    // return clamp(p.x, -1, 1);
-    float worley = SampleWorleyCaves(p);
-    float displacement = SampleFractalNoise(p) * _DisplacementStrength;
-    return worley + displacement;
-}
+// float SampleDensity(float3 p)
+// {
+//     // return clamp(p.x, -1, 1);
+//     float worley = SampleWorleyCaves(p);
+//     float displacement = SampleFractalNoise(p) * _DisplacementStrength;
+//     return worley + displacement;
+// }
 
 [numthreads(8,8,8)]
 void Main(uint3 id : SV_DispatchThreadID)

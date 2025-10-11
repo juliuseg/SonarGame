@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
+using Unity.Collections;
 
 [RequireComponent(typeof(MeshFilter))]
 public class MCBaker : MonoBehaviour
@@ -10,14 +11,7 @@ public class MCBaker : MonoBehaviour
 
     public MCSettings settings;
 
-    public Vector3 colorCieling;
-    public Vector3 colorFloor;
-    public Vector3 colorWall;
-    public float colorCielingThreshold;
-    public float colorFloorThreshold;
-    // public Vector3Int chunkCount;
 
-    // public bool runConstant = true;
     
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -32,12 +26,13 @@ public class MCBaker : MonoBehaviour
     
     private const int TRIANGLE_STRIDE = sizeof(float) * (3*3+3);
 
-    
+    private int _kernelMain;
+    void Awake() => _kernelMain = shader.FindKernel("Main");
     
 
     public void RunAsync(Vector3 position, System.Action<Mesh, uint> onComplete)
     {
-        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null;
+        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null, biomeBuffer = null;
 
         // use the asset directly; no Instantiate (or Destroy it if you insist on instancing)
         var cs = shader;
@@ -50,6 +45,7 @@ public class MCBaker : MonoBehaviour
             candSide?.Release(); candSide = null;
             candUp?.Release();   candUp = null;
             biomeMask?.Release(); biomeMask = null;
+            biomeBuffer?.Release(); biomeBuffer = null;
         }
 
         try
@@ -62,14 +58,13 @@ public class MCBaker : MonoBehaviour
             triBuf.SetCounterValue(0);
 
 
-            int id = cs.FindKernel("Main");
 
-            cs.SetBuffer(id, "_GeneratedTriangles", triBuf);
+            cs.SetBuffer(_kernelMain, "_GeneratedTriangles", triBuf);
 
             biomeMask = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Structured);
             uint[] zero = { 0 };
             biomeMask.SetData(zero);
-            cs.SetBuffer(id, "_BiomeMask", biomeMask);
+            cs.SetBuffer(_kernelMain, "_BiomeMask", biomeMask);
 
             Vector3 scale = settings.scale;
             Vector3 dims  = settings.chunkDims;
@@ -90,19 +85,27 @@ public class MCBaker : MonoBehaviour
             cs.SetFloat("_Lacunarity", settings.lacunarity);
             cs.SetFloat("_Persistence", settings.persistence);
 
-            cs.SetFloats("_ColorCieling", colorCieling.x, colorCieling.y, colorCieling.z);
-            cs.SetFloats("_ColorFloor", colorFloor.x, colorFloor.y, colorFloor.z);
-            cs.SetFloats("_ColorWall", colorWall.x, colorWall.y, colorWall.z);
-            cs.SetFloat("_ColorCielingThreshold", colorCielingThreshold);
-            cs.SetFloat("_ColorFloorThreshold", colorFloorThreshold);
+            cs.SetFloat("_BiomeScale", settings.biomeScale);
+            cs.SetFloat("_BiomeBorder", settings.biomeBorder);
+            cs.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
+            cs.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
 
-            cs.SetFloats("_Up", 0f, 1f, 0f);
+            float[] biomeOffsets = new float[settings.biomeSettings.Length];
+            for (int i = 0; i < settings.biomeSettings.Length; i++)
+            {
+                biomeOffsets[i] = settings.biomeSettings[i].densityOffset;
+            }
+            
+            biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float));
+            biomeBuffer.SetData(biomeOffsets);
+            cs.SetBuffer(_kernelMain, "_BiomeDensityOffsets", biomeBuffer);
 
-            cs.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
+
+            cs.GetKernelThreadGroupSizes(_kernelMain, out uint tgX, out uint tgY, out uint tgZ);
             int dx = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
             int dy = Mathf.CeilToInt((float)settings.chunkDims.y / tgY);
             int dz = Mathf.CeilToInt((float)settings.chunkDims.z / tgZ);
-            cs.Dispatch(id, dx, dy, dz);
+            cs.Dispatch(_kernelMain, dx, dy, dz);
 
             cntBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(triBuf, cntBuf, 0);
@@ -140,7 +143,7 @@ public class MCBaker : MonoBehaviour
                             }
 
                             var tris = reqTris.GetData<MCTriangle>();
-                            var mesh = ComposeMesh(tris.ToArray());
+                            var mesh = ComposeMesh(tris);
 
                             AsyncGPUReadback.Request(biomeMask, reqBiome =>
                             {
@@ -182,44 +185,54 @@ public class MCBaker : MonoBehaviour
         }
     }
 
+    private Vector3[] _verts;
+    private int[] _indices;
+    private Color[] _colors;
+    
 
-
-
-
-    private static Mesh ComposeMesh(MCTriangle[] triangles) {
+    private Mesh ComposeMesh(NativeArray<MCTriangle> triangles)
+    {
         var mesh = new Mesh { indexFormat = IndexFormat.UInt32 };
         int n = triangles.Length;
-        if (n == 0) return mesh;
+        if (n == 0)
+            return mesh;
 
-        var v = new Vector3[n * 3];
-        var indices = new int[n * 3];
+        int vCount = n * 3;
 
-        for (int i = 0; i < n; i++) {
-            int baseIdx = i * 3;
-            v[baseIdx]     = triangles[i].position0;
-            v[baseIdx + 1] = triangles[i].position1;
-            v[baseIdx + 2] = triangles[i].position2;
-
-            indices[baseIdx]     = baseIdx;
-            indices[baseIdx + 1] = baseIdx + 1;
-            indices[baseIdx + 2] = baseIdx + 2;
-        }
-
-        mesh.SetVertices(v);
-        mesh.SetIndices(indices, MeshTopology.Triangles, 0, true);
-
-        // Set all vertex colors to green
-        var colors = new Color[v.Length];
-        for (int i = 0; i < colors.Length; i++)
+        // allocate only when capacity is insufficient
+        if (_verts == null || _verts.Length < vCount)
         {
-            colors[i] = new Color(triangles[i/3].color.x, triangles[i/3].color.y, triangles[i/3].color.z);
+            _verts = new Vector3[vCount];
+            _indices = new int[vCount];
+            _colors = new Color[vCount];
         }
-        mesh.SetColors(colors);
+
+        for (int i = 0; i < n; i++)
+        {
+            int baseIdx = i * 3;
+
+            _verts[baseIdx]     = triangles[i].position0;
+            _verts[baseIdx + 1] = triangles[i].position1;
+            _verts[baseIdx + 2] = triangles[i].position2;
+
+            _indices[baseIdx]     = baseIdx;
+            _indices[baseIdx + 1] = baseIdx + 1;
+            _indices[baseIdx + 2] = baseIdx + 2;
+
+            Color c = new Color(triangles[i].color.x, triangles[i].color.y, triangles[i].color.z);
+            _colors[baseIdx] = _colors[baseIdx + 1] = _colors[baseIdx + 2] = c;
+        }
+
+        mesh.Clear();
+        mesh.SetVertices(_verts, 0, vCount);
+        mesh.SetIndices(_indices, 0, vCount, MeshTopology.Triangles, 0, true);
+        mesh.SetColors(_colors, 0, vCount);
 
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
         return mesh;
     }
+
 
 
     int GetAppendBufferCount(ComputeBuffer buffer)

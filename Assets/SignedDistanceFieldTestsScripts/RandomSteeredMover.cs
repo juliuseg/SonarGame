@@ -144,7 +144,7 @@ public class RandomSteeredMover : MonoBehaviour
 
         if (sdfValue < 0)
         {
-            // Debug.Log($"SDF Value {sdfValue}, avoidBias {avoidBias}, _dir {_dir}, speedMod {speed/currentSpeed}");
+            Debug.Log($"SDF Value {sdfValue}, avoidBias {avoidBias}, _dir {_dir}, speedMod {speed/currentSpeed}");
         }
 
         // --- move ---
