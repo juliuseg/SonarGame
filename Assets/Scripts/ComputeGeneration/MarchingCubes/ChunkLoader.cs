@@ -21,49 +21,47 @@ public class ChunkLoader : MonoBehaviour
     [Header("Debug")]
     public bool reloadTerrain = false;  // button to reload all terrain
 
+    [Header("SDF")]
+    public ComputeShader densityShader;
+    public ComputeShader edtShader;
+    public MCSettings settings;
 
+    private SDFGpu sdfGen;
 
-    private readonly Dictionary<Vector3Int, GameObject> _chunks = new();
+    public ChunkManager chunkManager;
     private readonly Queue<Vector3Int> _buildQueue = new();
-    private Vector3Int _lastCenter = new(int.MinValue, int.MinValue, int.MinValue);
+    private readonly HashSet<Vector3Int> _pending = new(); // enqueued or building
 
     void Awake()
     {
         if (baker == null) baker = GetComponent<MCBaker>();
         if (target == null) target = transform;
 
-        
+        sdfGen = new SDFGpu(densityShader, edtShader, settings);
+        chunkManager = new ChunkManager(settings);
     }
 
-    void Start()
-    {
-        
-    }
+
 
     void Update()
     {
-        if (baker == null || baker.settings == null) return;
+        if (baker == null) return;
 
-        // Check for reload button press
-        if (reloadTerrain)
-        {
-            ReloadAllTerrain();
-            reloadTerrain = false; // turn off after triggering
-            return;
-        }
+        
+        Vector3 chunkSize = chunkManager.GetChunkSize();
+        Vector3Int center = chunkManager.WorldToChunk(target.position);
 
-        Vector3 chunkSize = GetChunkSize();
-        Vector3Int center = WorldToChunk(target.position, chunkSize);
-
-        float currentRadius = GetDynamicRadius();
+        float radius = GetDynamicRadius();
 
         // Always evaluate needed and far chunks
-        EnqueueNeeded(center, chunkSize, currentRadius);
-        UnloadFar(center, chunkSize, currentRadius);
+        EnqueueNeeded(center, chunkSize, radius);
+        UnloadFar(center, chunkSize, radius);
 
-        BuildQueued(chunkSize, currentRadius);
+        BuildQueued(chunkSize, radius);
 
-        _lastCenter = center; // optional bookkeeping
+
+        // Debug chunks
+        print($"Chunks: {chunkManager.chunks.Count}  Queue: {_buildQueue.Count}  Pending: {_pending.Count}");
     }
 
 
@@ -83,22 +81,25 @@ public class ChunkLoader : MonoBehaviour
         {
             var c = new Vector3Int(center.x + dx, center.y + dy, center.z + dz);
 
-            Vector3 worldCenter = ChunkCenterWorld(c, chunkSize);
+            Vector3 worldCenter = chunkManager.ChunkCenterWorld(c);
             float dist = Vector3.Distance(worldCenter, target.position);
 
             // check vertical cutoff
-            float chunkHalfHeight = chunkSize.y * 0.5f;
-            if (worldCenter.y - chunkHalfHeight > waterLevel)
-                continue;
+            // float chunkHalfHeight = chunkSize.y * 0.5f;
+            // if (worldCenter.y - chunkHalfHeight > waterLevel)
+            //     continue;
 
             if (dist > radius) continue;
-            if (_chunks.ContainsKey(c)) continue;
+            if (chunkManager.TryGetChunk(c, out _)) continue;
             if (_buildQueue.Contains(c)) continue;
+            if (_pending.Contains(c)) continue;
 
             
 
-
+            // print("Enqueuing chunk: " + c);
             _buildQueue.Enqueue(c);
+            _pending.Add(c);
+
         }
     }
 
@@ -111,66 +112,110 @@ public class ChunkLoader : MonoBehaviour
             var coord = _buildQueue.Dequeue();
 
             // Skip if already loaded
-            if (_chunks.ContainsKey(coord))
+            if (chunkManager.TryGetChunk(coord, out _)){
+                _pending.Remove(coord);
                 continue;
+            }
 
-            Vector3 centerWorld = ChunkCenterWorld(coord, chunkSize);
-
-            // Skip if too far
+            Vector3 centerWorld = chunkManager.ChunkCenterWorld(coord);
             float dist = Vector3.Distance(centerWorld, target.position);
-            if (dist > radius)
+            if (dist > radius){
+                _pending.Remove(coord);
                 continue;
+            }
 
             // Reserve placeholder to prevent double-builds
-            _chunks[coord] = null;
+            chunkManager.SetChunk(coord, new Chunk(null, null, null));
 
-            // Launch async GPU job (non-blocking)
-            baker.RunAsync(centerWorld, (mesh) =>
-            {
-                // Safety: chunk could have been unloaded while GPU was working
-                if (!_chunks.ContainsKey(coord))
-                    return;
+            float chunkHalfHeight = chunkSize.y * 0.5f;
+            if (centerWorld.y - chunkHalfHeight < waterLevel){
 
-                if (mesh == null || mesh.vertexCount == 0)
+                // Launch async GPU job (non-blocking)
+                baker.RunAsync(centerWorld, (mesh) =>
                 {
-                    _chunks.Remove(coord);
+                    // Safety: chunk could have been unloaded while GPU was working
+                    if (!chunkManager.TryGetChunk(coord, out var chunk))
+                        return;
+
+                    if (mesh == null || mesh.vertexCount == 0)
+                    {
+                        
+                        chunk.gameObject = null;
+                        chunkManager.SetChunk(coord, chunk);
+                    
+                        return;
+                    }
+
+                    // Create chunk GameObject
+                    var go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
+                    go.transform.SetParent(transform, false);
+                    go.transform.localPosition = Vector3.zero;
+
+                    var mf = go.AddComponent<MeshFilter>();
+                    var mr = go.AddComponent<MeshRenderer>();
+                    var mc = go.AddComponent<MeshCollider>();
+
+                    // print("Mesh loaded at: " + coord);
+
+                    mf.sharedMesh = mesh;
+                    mc.sharedMesh = mesh;
+
+                    // Copy parent material
+                    var parentRenderer = baker.GetComponent<MeshRenderer>();
+                    if (parentRenderer)
+                        mr.sharedMaterial = parentRenderer.sharedMaterial;
+
+                    chunk.gameObject = go;
+
+                    chunkManager.SetChunk(coord, chunk);
+                });
+            } else {
+                if (!chunkManager.TryGetChunk(coord, out var chunk))
+                    return;
+                
+                chunk.gameObject = null;
+                chunkManager.SetChunk(coord, chunk);
+            }
+
+            // Build SDF
+            sdfGen.GenerateAsync(centerWorld, (data, buffer, state) =>
+            {
+                Vector3Int coord = (Vector3Int)state;
+
+                if (!chunkManager.TryGetChunk(coord, out var chunk))
+                {
+                    // chunk got unloaded before GPU finished
+                    buffer?.Release(); // free GPU memory
+                    return;
+                }
+                
+                if (data == null || buffer == null)
+                {
+                    Debug.LogWarning($"SDF generation failed for chunk: {coord}");
                     return;
                 }
 
-                // Create chunk GameObject
-                var go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
-                go.transform.SetParent(transform, false);
-                go.transform.localPosition = Vector3.zero;
+                chunk.sdfData = data;
+                chunk.sdfBuffer = buffer;
+                chunkManager.SetChunk(coord, chunk);
+            }, userState: coord);
 
-                var mf = go.AddComponent<MeshFilter>();
-                var mr = go.AddComponent<MeshRenderer>();
-                var mc = go.AddComponent<MeshCollider>();
 
-                print("Mesh loaded at: " + coord);
 
-                mf.sharedMesh = mesh;
-                mc.sharedMesh = mesh;
-
-                // Copy parent material
-                var parentRenderer = baker.GetComponent<MeshRenderer>();
-                if (parentRenderer)
-                    mr.sharedMaterial = parentRenderer.sharedMaterial;
-
-                _chunks[coord] = go;
-            });
 
             built++;
         }
     }
 
-
-    // Replace ReloadAllTerrain
-    private void ReloadAllTerrain()
+    public void OnDestroy()
     {
-        var keys = new List<Vector3Int>(_chunks.Keys);
-        foreach (var c in keys) DestroyChunk(c);
+        chunkManager.Clear();
+
         _buildQueue.Clear();
+        _pending.Clear();
     }
+
+
 
 
     // Replace UnloadFar
@@ -178,38 +223,24 @@ public class ChunkLoader : MonoBehaviour
     {
         var toRemove = new List<Vector3Int>();
 
-        foreach (var kvp in _chunks)
+        foreach (var kvp in chunkManager.chunks)
         {
-            Vector3 worldCenter = ChunkCenterWorld(kvp.Key, chunkSize);
+            Vector3 worldCenter = chunkManager.ChunkCenterWorld(kvp.Key);
             float dist = Vector3.Distance(worldCenter, target.position);
-            if (dist > radius + unloadBuffer) toRemove.Add(kvp.Key);
-        }
-
-        foreach (var c in toRemove) DestroyChunk(c);
-    }
-
-
-    // Add this helper
-    private void DestroyChunk(Vector3Int coord)
-    {
-        if (_chunks.TryGetValue(coord, out var go))
-        {
-            if (go != null)
-            {
-                var mf = go.GetComponent<MeshFilter>();
-                var mc = go.GetComponent<MeshCollider>();
-
-                // grab mesh once, clear refs, then destroy
-                Mesh mesh = mf ? mf.sharedMesh : null;
-                if (mc) mc.sharedMesh = null;
-                if (mf) mf.sharedMesh = null;
-
-                Destroy(go);
-                if (mesh != null) Destroy(mesh);
+            if (dist > radius + unloadBuffer){
+                // print("Unloading chunk: " + kvp.Key);
+                toRemove.Add(kvp.Key);
             }
-            _chunks.Remove(coord);
+
+            
+        }
+
+        foreach (var c in toRemove) {
+            _pending.Remove(c);
+            chunkManager.DestroyChunk(c);
         }
     }
+
 
 
     private float GetDynamicRadius()
@@ -228,28 +259,4 @@ public class ChunkLoader : MonoBehaviour
     }
 
 
-    // ----- grid math -----
-
-    private Vector3 GetChunkSize()
-    {
-        return Vector3.Scale(baker.settings.scale, baker.settings.chunkDims);
-    }
-
-    private static Vector3Int WorldToChunk(Vector3 worldPos, Vector3 chunkSize)
-    {
-        return new Vector3Int(
-            Mathf.FloorToInt(worldPos.x / chunkSize.x),
-            Mathf.FloorToInt(worldPos.y / chunkSize.y),
-            Mathf.FloorToInt(worldPos.z / chunkSize.z)
-        );
-    }
-
-    private static Vector3 ChunkCenterWorld(Vector3Int coord, Vector3 chunkSize)
-    {
-        return new Vector3(
-            (coord.x + 0.5f) * chunkSize.x,
-            (coord.y + 0.5f) * chunkSize.y,
-            (coord.z + 0.5f) * chunkSize.z
-        );
-    }
 }

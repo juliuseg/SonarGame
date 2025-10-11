@@ -13,16 +13,18 @@ public class DebugTestsSDF : MonoBehaviour
     ComputeBuffer densityBuffer;
     ComputeBuffer edtBuffer;
     ComputeBuffer edtBufferFlipped;
-
+    ComputeBuffer sdfBuffer;
     void Start()
     {
         Vector3Int dims = settings.chunkDims;
         data = new float[dims.x, dims.y, dims.z];
 
-        int total = dims.x * dims.y * dims.z;
-        densityBuffer = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
-        edtBuffer     = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
-        edtBufferFlipped = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
+        int total = dims.x * dims.y * dims.z; // We need to acount for the halos
+        int totalWithHalo = (dims.x + 2 * settings.halo) * (dims.y + 2 * settings.halo) * (dims.z + 2 * settings.halo);
+        densityBuffer = new ComputeBuffer(totalWithHalo, sizeof(float), ComputeBufferType.Structured);
+        edtBuffer     = new ComputeBuffer(totalWithHalo, sizeof(float), ComputeBufferType.Structured);
+        edtBufferFlipped = new ComputeBuffer(totalWithHalo, sizeof(float), ComputeBufferType.Structured);
+        sdfBuffer = new ComputeBuffer(total, sizeof(float), ComputeBufferType.Structured);
 
         //Run();
     }
@@ -30,18 +32,19 @@ public class DebugTestsSDF : MonoBehaviour
     void Update()
     {
         Vector3 position = transform.position;
-        Vector3Int dims = settings.chunkDims;
+        Vector3Int dims = settings.chunkDims; 
+        Vector3Int dimsWithHalo = new Vector3Int(dims.x + 2 * settings.halo, dims.y + 2 * settings.halo, dims.z + 2 * settings.halo);
 
         // ---------- DENSITY PASS ----------
         int id = densityShader.FindKernel("Main");
         densityShader.SetBuffer(id, "GeneratedDensity", densityBuffer);
 
         Vector3 scale = settings.scale;
-        Vector3 origin = position - Vector3.Scale(scale, dims) * 0.5f;
+        Vector3 origin = position - Vector3.Scale(scale, dimsWithHalo) * 0.5f;
 
         densityShader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
         densityShader.SetFloat("_IsoLevel", settings.isoLevel);
-        densityShader.SetInts("_ChunkDims", dims.x, dims.y, dims.z);
+        densityShader.SetInts("_ChunkDims", dimsWithHalo.x, dimsWithHalo.y, dimsWithHalo.z);
         densityShader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
         densityShader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
         densityShader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
@@ -53,66 +56,73 @@ public class DebugTestsSDF : MonoBehaviour
         densityShader.SetFloat("_Persistence", settings.persistence);
 
         densityShader.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
-        int dx = Mathf.CeilToInt((float)dims.x / tgX);
-        int dy = Mathf.CeilToInt((float)dims.y / tgY);
-        int dz = Mathf.CeilToInt((float)dims.z / tgZ);
+        int dx = Mathf.CeilToInt((float)dimsWithHalo.x / tgX);
+        int dy = Mathf.CeilToInt((float)dimsWithHalo.y / tgY);
+        int dz = Mathf.CeilToInt((float)dimsWithHalo.z / tgZ);
         densityShader.Dispatch(id, dx, dy, dz);
 
 
         // EDT Shader
-        edtShader.SetInts("_ChunkDims", dims.x, dims.y, dims.z);
+        edtShader.SetInts("_ChunkDims", dimsWithHalo.x, dimsWithHalo.y, dimsWithHalo.z);
         edtShader.SetFloat("_MaxDistance", 1e9f);
 
         // --- Normal EDT ---
         bool flipDensity = false;
-        DispatchEDT("EDT_X", dims, new Vector2Int(dims.y, dims.z), true,  true, flipDensity);
-        DispatchEDT("EDT_Y", dims, new Vector2Int(dims.x, dims.z), false, false, flipDensity);
-        DispatchEDT("EDT_Z", dims, new Vector2Int(dims.x, dims.y), false, false, flipDensity);
+        DispatchEDT("EDT_X", new Vector2Int(dimsWithHalo.y, dimsWithHalo.z), true,  true, flipDensity);
+        DispatchEDT("EDT_Y", new Vector2Int(dimsWithHalo.x, dimsWithHalo.z), false, false, flipDensity);
+        DispatchEDT("EDT_Z", new Vector2Int(dimsWithHalo.x, dimsWithHalo.y), false, false, flipDensity);
 
-        // copy out the result before overwriting it
-        int kCopy = edtShader.FindKernel("CopyBuffer");
-        edtShader.SetInt("_Total", dims.x * dims.y * dims.z);
-        edtShader.SetBuffer(kCopy, "BufferSrc", edtBuffer);
-        edtShader.SetBuffer(kCopy, "BufferDst", edtBufferFlipped);
-        edtShader.Dispatch(kCopy, Mathf.CeilToInt((dims.x*dims.y*dims.z)/64f), 1, 1);
+        // // copy out the result before overwriting it
+        // int kCopy = edtShader.FindKernel("CopyBuffer");
+        // edtShader.SetInt("_Total", dimsWithHalo.x * dimsWithHalo.y * dimsWithHalo.z);
+        // edtShader.SetBuffer(kCopy, "BufferSrc", edtBuffer);
+        // edtShader.SetBuffer(kCopy, "BufferDst", edtBufferFlipped);
+        // edtShader.GetKernelThreadGroupSizes(kCopy, out uint tgx, out uint tgy, out uint tgz);
+        // edtShader.Dispatch(kCopy, Mathf.CeilToInt(dimsWithHalo.x*dimsWithHalo.y*dimsWithHalo.z/tgx), 1, 1);
 
 
         // --- Flipped EDT ---
         flipDensity = true;
-        DispatchEDT("EDT_X", dims, new Vector2Int(dims.y, dims.z), true,  true, flipDensity);
-        DispatchEDT("EDT_Y", dims, new Vector2Int(dims.x, dims.z), false, false, flipDensity);
-        DispatchEDT("EDT_Z", dims, new Vector2Int(dims.x, dims.y), false, false, flipDensity, true);
+        DispatchEDT("EDT_X", new Vector2Int(dimsWithHalo.y, dimsWithHalo.z), true,  true, flipDensity);
+        DispatchEDT("EDT_Y", new Vector2Int(dimsWithHalo.x, dimsWithHalo.z), false, false, flipDensity);
+        DispatchEDT("EDT_Z", new Vector2Int(dimsWithHalo.x, dimsWithHalo.y), false, false, flipDensity);
 
+        // Now we can create the SDF
+        int kSDF = edtShader.FindKernel("ComputeSDFWithHalos");
+        edtShader.SetInts("_ChunkDims", dims.x, dims.y, dims.z);
+        edtShader.SetInt("_Halo", settings.halo);
+        edtShader.SetBuffer(kSDF, "EDTIn", edtBufferFlipped);
+        edtShader.SetBuffer(kSDF, "EDTOut", edtBuffer);
+        edtShader.SetBuffer(kSDF, "SDFHalos", sdfBuffer);
 
-        
+        int totalCore = dims.x * dims.y * dims.z;
+        edtShader.Dispatch(kSDF, Mathf.CeilToInt(totalCore / 64f), 1, 1);
+
 
 
         // ---------- READBACK ----------
-        AsyncGPUReadback.Request(edtBuffer, OnReadbackComplete);
+        AsyncGPUReadback.Request(sdfBuffer, OnReadbackComplete);
     }
 
     void DispatchEDT(
         string kernelName,
-        Vector3Int dims,
         Vector2Int dispatchAxes,
         bool binarize,
         bool useExternal,
-        bool flipDensity,
-        bool computeSDF = false)
+        bool flipDensity)
     {
         int k = edtShader.FindKernel(kernelName);
         edtShader.SetInt("_BinarizeInput", binarize ? 1 : 0);
         edtShader.SetInt("_UseExternalInput", useExternal ? 1 : 0);
         edtShader.SetInt("_FlipDensity", flipDensity ? 1 : 0);
-        edtShader.SetInt("_ComputeSDF", computeSDF ? 1 : 0);
-
+        
         // choose correct output target
-        ComputeBuffer outBuf = computeSDF || !flipDensity ? edtBuffer : edtBufferFlipped;
+        ComputeBuffer outBuf = flipDensity ? edtBufferFlipped : edtBuffer;
 
         // choose input
         ComputeBuffer inBuf = useExternal
             ? densityBuffer
-            : (computeSDF ? edtBufferFlipped : outBuf);
+            : outBuf;
 
         edtShader.SetBuffer(k, "EDTInput", inBuf);
         edtShader.SetBuffer(k, "EDTBuffer", outBuf);
@@ -182,6 +192,7 @@ public class DebugTestsSDF : MonoBehaviour
         densityBuffer?.Release();
         edtBuffer?.Release();
         edtBufferFlipped?.Release();
+        sdfBuffer?.Release();
     }
 
 }

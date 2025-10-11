@@ -47,8 +47,20 @@ public class MCBaker : MonoBehaviour
 
     public void RunAsync(Vector3 position, System.Action<Mesh> onComplete)
     {
-        ComputeBuffer triBuf = null, cntBuf = null;
-        ComputeBuffer candDown = null, candSide = null, candUp = null, minMax = null;
+        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, minMax = null;
+
+        // use the asset directly; no Instantiate (or Destroy it if you insist on instancing)
+        var cs = shader;
+
+        void ReleaseAll()
+        {
+            triBuf?.Release(); triBuf = null;
+            cntBuf?.Release(); cntBuf = null;
+            candDown?.Release(); candDown = null;
+            candSide?.Release(); candSide = null;
+            candUp?.Release();   candUp = null;
+            minMax?.Release();   minMax = null;
+        }
 
         try
         {
@@ -59,60 +71,50 @@ public class MCBaker : MonoBehaviour
             triBuf = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
             triBuf.SetCounterValue(0);
 
-            // other buffers if you still need them on GPU
             candDown = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candDown.SetCounterValue(0);
             candSide = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candSide.SetCounterValue(0);
             candUp   = new ComputeBuffer(maxTriangles, CANDIDATE_STRIDE, ComputeBufferType.Append); candUp.SetCounterValue(0);
             minMax   = new ComputeBuffer(2, sizeof(uint), ComputeBufferType.Structured);
 
-            var shaderInstance = Instantiate(shader);
-            int id = shaderInstance.FindKernel("Main");
+            int id = cs.FindKernel("Main");
 
-            // Use shaderInstance everywhere from here
-            shaderInstance.SetBuffer(id, "_GeneratedTriangles", triBuf);
-            shaderInstance.SetBuffer(id, "_CandidatesDown", candDown);
-            shaderInstance.SetBuffer(id, "_CandidatesSide", candSide);
-            shaderInstance.SetBuffer(id, "_CandidatesUp", candUp);
-            shaderInstance.SetBuffer(id, "_MinMax", minMax);
+            cs.SetBuffer(id, "_GeneratedTriangles", triBuf);
+            cs.SetBuffer(id, "_CandidatesDown",     candDown);
+            cs.SetBuffer(id, "_CandidatesSide",     candSide);
+            cs.SetBuffer(id, "_CandidatesUp",       candUp);
+            cs.SetBuffer(id, "_MinMax",             minMax);
 
             Vector3 scale = settings.scale;
             Vector3 dims  = settings.chunkDims;
             Vector3 origin = position - new Vector3(scale.x * dims.x / 2f, scale.y * dims.y / 2f, scale.z * dims.z / 2f);
 
-            // Common
-            shaderInstance.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
-            shaderInstance.SetFloat("_IsoLevel", settings.isoLevel);
-            shaderInstance.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
+            cs.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
+            cs.SetFloat("_IsoLevel", settings.isoLevel);
+            cs.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
 
-            // Worley
-            shaderInstance.SetFloat("_WorleyNoiseScale", settings.noiseScale);
-            shaderInstance.SetFloat("_WorleyVerticalScale", settings.verticalScale);
-            shaderInstance.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
-            shaderInstance.SetInt("_WorleySeed", settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed);
+            cs.SetFloat("_WorleyNoiseScale", settings.noiseScale);
+            cs.SetFloat("_WorleyVerticalScale", settings.verticalScale);
+            cs.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
+            cs.SetInt("_WorleySeed", settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed);
 
-            // Displacement
-            shaderInstance.SetFloat("_DisplacementStrength", settings.displacementStrength);
-            shaderInstance.SetFloat("_DisplacementScale", settings.displacementScale);
-            shaderInstance.SetInt("_Octaves", settings.octaves);
-            shaderInstance.SetFloat("_Lacunarity", settings.lacunarity);
-            shaderInstance.SetFloat("_Persistence", settings.persistence);
+            cs.SetFloat("_DisplacementStrength", settings.displacementStrength);
+            cs.SetFloat("_DisplacementScale", settings.displacementScale);
+            cs.SetInt("_Octaves", settings.octaves);
+            cs.SetFloat("_Lacunarity", settings.lacunarity);
+            cs.SetFloat("_Persistence", settings.persistence);
 
-            // Candidates
-            shaderInstance.SetFloat("_CosUp", settings.cosUp);
-            shaderInstance.SetFloat("_CosDown", settings.cosDown);
-            shaderInstance.SetFloat("_CosSide", settings.cosSide);
-            shaderInstance.SetInt("_ThresholdUINT", (int)(settings.foliageDensity * 4294967296.0));
-            shaderInstance.SetFloats("_Up", 0f, 1f, 0f);
+            cs.SetFloat("_CosUp", settings.cosUp);
+            cs.SetFloat("_CosDown", settings.cosDown);
+            cs.SetFloat("_CosSide", settings.cosSide);
+            cs.SetInt("_ThresholdUINT", (int)(settings.foliageDensity * 4294967296.0));
+            cs.SetFloats("_Up", 0f, 1f, 0f);
 
-            // Dispatch
-            shaderInstance.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
+            cs.GetKernelThreadGroupSizes(id, out uint tgX, out uint tgY, out uint tgZ);
             int dx = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
             int dy = Mathf.CeilToInt((float)settings.chunkDims.y / tgY);
             int dz = Mathf.CeilToInt((float)settings.chunkDims.z / tgZ);
-            shaderInstance.Dispatch(id, dx, dy, dz);
+            cs.Dispatch(id, dx, dy, dz);
 
-
-            // read appended count asynchronously
             cntBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(triBuf, cntBuf, 0);
 
@@ -120,47 +122,58 @@ public class MCBaker : MonoBehaviour
             {
                 try
                 {
-                    if (reqCount.hasError) { onComplete?.Invoke(null); return; }
+                    if (reqCount.hasError)
+                    {
+                        ReleaseAll();
+                        onComplete?.Invoke(null);
+                        return;
+                    }
+
                     uint triCount = reqCount.GetData<uint>()[0];
-                    if (triCount == 0) { onComplete?.Invoke(null); return; }
+                    if (triCount == 0)
+                    {
+                        ReleaseAll();
+                        onComplete?.Invoke(null);
+                        return;
+                    }
 
                     int bytes = (int)triCount * TRIANGLE_STRIDE;
 
-                    // now read exactly 'triCount' triangles
                     AsyncGPUReadback.Request(triBuf, bytes, 0, reqTris =>
                     {
                         try
                         {
-                            if (reqTris.hasError) { onComplete?.Invoke(null); return; }
+                            if (reqTris.hasError)
+                            {
+                                ReleaseAll();
+                                onComplete?.Invoke(null);
+                                return;
+                            }
+
                             var tris = reqTris.GetData<MCTriangle>();
-                            var mesh = ComposeMesh(tris.ToArray());   // length == triCount
+                            var mesh = ComposeMesh(tris.ToArray());
                             onComplete?.Invoke(mesh);
                         }
                         finally
                         {
-                            triBuf?.Release();
-                            candDown?.Release(); candSide?.Release(); candUp?.Release();
-                            minMax?.Release(); cntBuf?.Release();
+                            ReleaseAll();
                         }
                     });
                 }
                 catch
                 {
-                    triBuf?.Release();
-                    candDown?.Release(); candSide?.Release(); candUp?.Release();
-                    minMax?.Release(); cntBuf?.Release();
+                    ReleaseAll();
                     onComplete?.Invoke(null);
                 }
             });
         }
         catch
         {
-            triBuf?.Release();
-            candDown?.Release(); candSide?.Release(); candUp?.Release();
-            minMax?.Release(); cntBuf?.Release();
+            ReleaseAll();
             onComplete?.Invoke(null);
         }
     }
+
 
 
 

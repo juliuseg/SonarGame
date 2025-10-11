@@ -30,3 +30,4 @@ MonoBehaviour:
   cosDown: 0.8
   cosSide: 0.3
   foliageDensity: 0.1
+  halo: 8

@@ -8,7 +8,6 @@ float _MaxDistance;
 int _BinarizeInput;      // 1 only for first pass
 int _UseExternalInput;   // 1 only for X pass
 int _FlipDensity;        // 0 does not flip, 1 flips. Flips density so 
-int _ComputeSDF; // 1 only for final pass, computes SDF from EDT, uses EDTInput as the flipped density EDT.
 
 RWStructuredBuffer<float> EDTBuffer;     // read/write in-place
 StructuredBuffer<float>   EDTInput;      // read-only, used only on X
@@ -82,11 +81,7 @@ void EDT1D_Line(int fixedA, int fixedB, int axis)
                                 int3(fixedA, fixedB, i);
 
         float val = d[i];
-        if (_ComputeSDF == 1)
-        {
-            float other = EDTInput[Index(p)];
-            val = sqrt(other) - sqrt(val);
-        }
+        
         EDTBuffer[Index(p)] = val;
     }
 }
@@ -112,6 +107,8 @@ void EDT_Z(uint3 id : SV_DispatchThreadID)
     EDT1D_Line(id.x, id.y, 2);
 }
 
+// ------------------------------------------------------------
+
 
 #pragma kernel CopyBuffer
 RWStructuredBuffer<float> BufferDst;
@@ -124,4 +121,48 @@ void CopyBuffer(uint3 id : SV_DispatchThreadID)
     uint i = id.x;
     if (i >= _Total) return;
     BufferDst[i] = BufferSrc[i];
+}
+
+
+// ------------------------------------------------------------
+
+#pragma kernel ComputeSDFWithHalos
+StructuredBuffer<float>   EDTIn;   // inside distances (with halo padding)
+StructuredBuffer<float>   EDTOut;  // outside distances (with halo padding)
+RWStructuredBuffer<float> SDFHalos; // output, no halos
+
+int _Halo;
+
+int Index3D(int3 p, int3 dims)
+{
+    return p.z + p.y * dims.z + p.x * dims.y * dims.z;
+}
+
+[numthreads(64,1,1)]
+void ComputeSDFWithHalos(uint3 id : SV_DispatchThreadID)
+{
+    uint flat = id.x;
+    int total = _ChunkDims.x * _ChunkDims.y * _ChunkDims.z;
+    if (flat >= total) return;
+
+    // decode flat index into local coords (within chunk)
+    int3 p;
+    p.x = flat / (_ChunkDims.y * _ChunkDims.z);
+    int rem = flat % (_ChunkDims.y * _ChunkDims.z);
+    p.y = rem / _ChunkDims.z;
+    p.z = rem % _ChunkDims.z;
+
+    // map to halo-padded coords
+    int3 pHalo = p + int3(_Halo, _Halo, _Halo);
+    int3 dimsHalo = _ChunkDims + int3(_Halo * 2, _Halo * 2, _Halo * 2);
+
+    int idxHalo = Index3D(pHalo, dimsHalo);
+
+    float din  = EDTIn[idxHalo];   // inside squared distance
+    float dout = EDTOut[idxHalo];  // outside squared distance
+
+    // true signed distance (negative inside)
+    float sdf = sqrt(dout) - sqrt(din);
+
+    SDFHalos[flat] = sdf;
 }

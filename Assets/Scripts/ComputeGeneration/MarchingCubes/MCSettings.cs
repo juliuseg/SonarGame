@@ -28,4 +28,7 @@ public class MCSettings : ScriptableObject
     public float cosSide = 0.5f;
     public float foliageDensity = 0.1f;
 
+    [Header("SDF Settings")]
+    public int halo = 1;
+
 }

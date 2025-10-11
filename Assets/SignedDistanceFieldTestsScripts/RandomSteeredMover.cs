@@ -18,14 +18,17 @@ public class RandomSteeredMover : MonoBehaviour
     [Header("Wall Avoidance")]
     [Tooltip("Distance at which avoidance begins (meters).")]
     public float avoidanceRadius = 1.0f;
+    public float wallFollowRadius = 2.0f;
+    public float slowDownFactor = 1f; 
+    public float wallFollowStrength = 0.5f; // new: how much to steer along the wall
+    public float avoidanceTurnFactor = 1f; 
 
     [Tooltip("Strength of the avoidance push (0–1).")]
     public float avoidanceStrength = 0.8f;
 
-    [Header("SDF Brick Settings")]
-    public MCSettings mcSettings; // assign in inspector
-    public float voxelSize = 0.25f;
-    public int brickSize = 32;
+    [Header("SDF")]
+    public ChunkLoader chunkLoader;
+
 
     [Header("Target Seeking")]
     public Transform target;
@@ -40,7 +43,6 @@ public class RandomSteeredMover : MonoBehaviour
     private Vector3 _biasDir;
     private float _nextJitterT;
     private System.Random _rng;
-    private SDFBrick sdfBrick;
 
     void Awake()
     {
@@ -50,7 +52,11 @@ public class RandomSteeredMover : MonoBehaviour
     void Start()
     {
         // build the SDF brick using MCSettings
-        sdfBrick = new SDFBrick(mcSettings, voxelSize, brickSize, isoLevelOffset: 0.00f);
+        if (chunkLoader == null)
+        {
+            Debug.LogError("ChunkLoader not found");
+            return;
+        }
 
         initialDirection = RandomUnitVector();
         _dir = initialDirection.sqrMagnitude > 1e-6f ? initialDirection.normalized : Vector3.forward;
@@ -62,59 +68,92 @@ public class RandomSteeredMover : MonoBehaviour
     {
         float dt = Time.deltaTime;
 
-        // Random steering update
+        // --- random steering ---
         if (Time.time >= _nextJitterT)
         {
-            if (target == null){
-                Debug.LogError("No target, using random steering");
+            if (target == null)
+            {
                 _biasDir = RandomUnitVector();
-            } else{
-            
+            }
+            else
+            {
                 Vector3 rnd = RandomUnitVector();
-                Vector3 seek = Vector3.zero;
-                
                 Vector3 toTarget = target.position - transform.position;
-
-                if (toTarget.sqrMagnitude > 1e-6f)
-                {
-                    seek = toTarget.normalized;
-                }
-                
-                Vector3 combined = targetBiasStrength * seek + rnd*Mathf.Min(4f, (toTarget.magnitude/10f));
-                // Debug.Log("Combined: " + combined);
+                Vector3 seek = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : Vector3.zero;
+                Vector3 combined = targetBiasStrength * seek + rnd * Mathf.Min(4f, toTarget.magnitude / 10f);
                 _biasDir = combined.sqrMagnitude > 1e-6f ? combined.normalized : rnd;
             }
-            
+
             _nextJitterT += jitterHz > 0f ? 1f / jitterHz : 999f;
         }
 
         // --- compute avoidance bias from SDF ---
         Vector3 avoidBias = Vector3.zero;
-        float s = sdfBrick.Sample(transform.position);
-        if (s < avoidanceRadius)
+        Vector3 gradient = Vector3.zero;
+        float sdfValue = float.MaxValue;
+        bool hasSdf = chunkLoader.chunkManager.TryGetSDFValue(transform.position, out sdfValue);
+
+        if (hasSdf && sdfValue < avoidanceRadius)
         {
-            // numeric gradient
-            float h = 0.05f;
-            float sx = sdfBrick.Sample(transform.position + new Vector3(h, 0, 0)) - sdfBrick.Sample(transform.position - new Vector3(h, 0, 0));
-            float sy = sdfBrick.Sample(transform.position + new Vector3(0, h, 0)) - sdfBrick.Sample(transform.position - new Vector3(0, h, 0));
-            float sz = sdfBrick.Sample(transform.position + new Vector3(0, 0, h)) - sdfBrick.Sample(transform.position - new Vector3(0, 0, h));
-            Vector3 grad = new Vector3(sx, sy, sz).normalized;
-            avoidBias = grad * avoidanceStrength * Mathf.Clamp01(0.5f+(avoidanceRadius - s) / avoidanceRadius);
-
+            if (chunkLoader.chunkManager.TrySampleSDFGradient(transform.position, out gradient))
+            {
+                float t = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
+                float biasStrength = Mathf.Pow(t, 0.7f);
+                avoidBias = gradient.normalized * avoidanceStrength * biasStrength;
+            }
         }
-        Debug.Log("SDF: " + s + " Avoid Bias: " + avoidBias);
 
-        // desired heading: random + avoidance
+        // --- desired heading base ---
         Vector3 desired = (_dir + turningStrenght * _biasDir + avoidBias).normalized;
 
-        // limit turning
-        float maxRadians = Mathf.Deg2Rad * maxTurnRateDegPerSec * dt;
+        // --- wall following if heading into wall ---
+        float turningBoost = 1f; // dynamic turn rate multiplier
+        if (hasSdf && gradient != Vector3.zero && sdfValue < wallFollowRadius)
+        {
+            float dot = Vector3.Dot(_dir.normalized, gradient.normalized);
+            if (dot < 0f)
+            {
+                Vector3 wallTangent = Vector3.ProjectOnPlane(_dir, gradient).normalized;
+                desired = Vector3.Slerp(desired, wallTangent, wallFollowStrength * -dot);
+                turningBoost = 1f + (-dot) * avoidanceTurnFactor; // scale turn speed when facing wall
+                Debug.DrawRay(transform.position, wallTangent * 2f, Color.cyan);
+                // Debug.Log($"Wall follow active: dot={dot:F3}, turningBoost={turningBoost:F2}");
+            }
+        }
+
+        // --- limit turning with boosted rate ---
+        float maxRadians = Mathf.Deg2Rad * maxTurnRateDegPerSec * dt * turningBoost;
         _dir = Vector3.RotateTowards(_dir, desired, maxRadians, 0f);
         if (_dir.sqrMagnitude < 1e-9f) _dir = Vector3.forward;
 
-        // move
-        transform.position += _dir * speed * dt;
+        // --- slowdown based on avoidance direction ---
+        float currentSpeed = speed;
+        if (hasSdf && sdfValue < avoidanceRadius && avoidBias != Vector3.zero)
+        {
+            float dot = Vector3.Dot(_dir.normalized, avoidBias.normalized);
+            if (dot < 0f)
+            {
+                float proximity = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
+                float baseSlow = Mathf.Clamp01(-dot) * proximity * slowDownFactor;
+                float slowFactor = 1f - Mathf.Clamp01(baseSlow);
+                currentSpeed *= slowFactor;
+
+                // Debug.Log($"Slowing down: dot={dot:F3}, proximity={proximity:F3}, slowDownFactor={slowDownFactor:F2}, slowFactor={slowFactor:F3}, newSpeed={currentSpeed:F3}");
+            }
+        }
+
+        if (sdfValue < 0)
+        {
+            // Debug.Log($"SDF Value {sdfValue}, avoidBias {avoidBias}, _dir {_dir}, speedMod {speed/currentSpeed}");
+        }
+
+        // --- move ---
+        transform.position += _dir * currentSpeed * dt;
     }
+
+
+
+
 
     Vector3 RandomUnitVector()
     {
