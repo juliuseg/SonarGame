@@ -3,7 +3,6 @@
 
 #include "Includes/Noise.compute"
 #include "Includes/Worley.hlsl"
-#include "Includes/1dWorleyBiome.hlsl"
 #include "Includes/3dWorleyBiome.hlsl"
 
 // Shared parameters
@@ -19,6 +18,17 @@ float _BiomeDisplacementStrength;
 float _BiomeDisplacementScale;
 
 StructuredBuffer<float> _BiomeDensityOffsets;
+
+struct TerraformEdit {
+    float3 position;
+    float strength;
+    float radius;
+};
+ 
+StructuredBuffer<TerraformEdit> _TerraformEdits;
+int _TerraformEditsCount; 
+
+
 
 // ---- Density helpers ----
 float SampleFractalNoise(float3 p)
@@ -56,15 +66,44 @@ float3 GetBiomeVertexColor(float3 pos)
     return float3(w.z, w.w, blend);
 }
 
-float SampleDensity(float3 p)
+float SampleTerraformEdits(float3 p)
 {
+    float densityDelta = 0.0;
+
+    for (int i = 0; i < _TerraformEditsCount; i++)
+    {
+        TerraformEdit edit = _TerraformEdits[i];
+        float3 d = p - edit.position;
+        float dist = length(d);
+
+        if (dist < edit.radius)
+        {
+            // 1.0 at center, 0.0 at edge
+            float t = 1.0 - saturate(dist / edit.radius);
+
+
+            densityDelta += edit.strength * t;
+        }
+    }
+
+    return densityDelta;
+}
+
+float SampleDensity(float3 p, out bool terrainEdit)
+{
+    
     float worley = SampleWorleyCaves(p);
     float displacement = SampleFractalNoise(p);
     float3 biome = GetBiomeVertexColor(p);
     float biomeOffset = lerp(GetDensityOffsetForBiome(biome.x),
                              GetDensityOffsetForBiome(biome.y),
                              biome.z);
-    return worley + displacement + biomeOffset;
+    float terraformEdits = SampleTerraformEdits(p); // We could check if not zero and if we assign another biome value so its rock like or whatever. 
+    terrainEdit = terraformEdits != 0.0;
+
+    return worley + displacement + biomeOffset+ terraformEdits;
 }
+
+ 
 
 #endif

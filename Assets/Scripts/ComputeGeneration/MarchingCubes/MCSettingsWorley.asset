@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e5e1fcf70a90e48f789f23946cb7f315, type: 3}
   m_Name: MCSettingsWorley
   m_EditorClassIdentifier: Assembly-CSharp::MCSettings
-  scale: {x: 0.5, y: 0.5, z: 0.5}
-  chunkDims: {x: 32, y: 32, z: 32}
+  scale: {x: 1, y: 1, z: 1}
+  chunkDims: {x: 16, y: 16, z: 16}
   isoLevel: 0.1
   noiseFrequency: {x: 1, y: 1, z: 1}
   noiseOffset: {x: 0, y: 0, z: 0}
@@ -23,9 +23,9 @@ MonoBehaviour:
   caveHeightFalloff: 20
   displacementStrength: 0.05
   displacementScale: 12.5
-  octaves: 4
-  lacunarity: 2
-  persistence: 0.5
+  octaves: 2
+  lacunarity: 3
+  persistence: 0.7
   cosUp: 0.8
   cosDown: 0.8
   cosSide: 0.3
@@ -38,4 +38,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: b65d370dc97b7479db6973ef5458480a, type: 2}
   - {fileID: 11400000, guid: 9b9c2df6f2f514607836ef76a653e701, type: 2}
   - {fileID: 11400000, guid: 499fa23d7cd544f0b897e0052be2757f, type: 2}
+  - {fileID: 11400000, guid: f97017416c19a42239bf77ad1f3718eb, type: 2}
   halo: 8

@@ -89,6 +89,38 @@ public class ChunkManager
         );
     }
 
+    // Returns all chunks intersecting a sphere defined by position and radius
+    public List<Vector3Int> GetChunksInRadius(Vector3 position, float radius)
+    {
+        Vector3 min = position - Vector3.one * radius;
+        Vector3 max = position + Vector3.one * radius;
+
+        Vector3Int minCoord = WorldToChunk(min);
+        Vector3Int maxCoord = WorldToChunk(max);
+
+        List<Vector3Int> result = new();
+
+        for (int x = minCoord.x; x <= maxCoord.x; x++)
+        for (int y = minCoord.y; y <= maxCoord.y; y++)
+        for (int z = minCoord.z; z <= maxCoord.z; z++)
+        {
+            result.Add(new Vector3Int(x, y, z));
+        }
+
+        return result;
+    }
+
+    public List<Vector3Int> ApplyTerraformEdit(TerraformEdit edit)
+    {
+        List<Vector3Int> affectedChunks = GetChunksInRadius(edit.position, edit.radius);
+
+        foreach (var coord in affectedChunks)
+            if (TryGetChunk(coord, out var chunk))
+                chunk.terraformEdits.Add(edit);
+
+        return affectedChunks;
+    }
+
     
 
     public bool TryGetSDFValue(Vector3 worldPos, out float value)
@@ -98,7 +130,7 @@ public class ChunkManager
         Vector3Int coord = WorldToChunk(worldPos);
         if (!TryGetChunk(coord, out var baseChunk) || baseChunk.sdfData == null)
         {
-            Debug.Log($"Missing chunk or SDF data for world position: {worldPos}");
+            // Debug.Log($"Missing chunk or SDF data for world position: {worldPos}");
             return false;
         }
 

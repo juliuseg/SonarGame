@@ -46,7 +46,7 @@ float4 worley3D_biome_buffered(float3 p, float scale, float displacement, float 
                 float biome = 0.0;
                 if (cell.y < 0)
                 {
-                    biome = 1.0+floor(hash3(cell + 37.37) * 2.0);
+                    biome = 1.0+floor(hash3(cell + 37.37) * 3.0);
                 }
 
                 if (d < F1)

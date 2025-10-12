@@ -14,16 +14,7 @@ public class TailController : MonoBehaviour
 		BuildSegments();
 	}
 
-	private void OnValidate()
-	{
-		segmentLength = Mathf.Max(0.0001f, segmentLength);
-
-		if (Application.isPlaying && builtCount != segmentSizes.Length-1)
-		{
-			ClearSegments();
-			BuildSegments();
-		}
-	}
+	
 
 	private void BuildSegments()
 	{
@@ -37,12 +28,10 @@ public class TailController : MonoBehaviour
         transform.localScale = new Vector3(segmentSizes[0], segmentSizes[0], segmentSizes[0]);
 		for (int i = 0; i < segmentSizes.Length-1; i++)
 		{
-			GameObject segmentObject = tailPrefab != null
-				? Instantiate(tailPrefab)
-				: GameObject.CreatePrimitive(PrimitiveType.Sphere);
+			GameObject segmentObject = Instantiate(tailPrefab);
 
 			segmentObject.name = $"TailSegment_{i}";
-			segmentObject.transform.SetParent(transform.parent, true);
+			segmentObject.transform.SetParent(transform);
 
 			Vector3 initialPosition = headPosition + backDirection * ((i + 1) * segmentLength);
 			segmentObject.transform.position = initialPosition;
@@ -100,5 +89,10 @@ public class TailController : MonoBehaviour
 
 			previousPosition = constrained;
 		}
+	}
+
+	private void OnDestroy()
+	{
+		ClearSegments();
 	}
 }

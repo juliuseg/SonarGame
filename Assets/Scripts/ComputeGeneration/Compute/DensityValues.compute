@@ -63,7 +63,8 @@ void Main(uint3 id : SV_DispatchThreadID)
     int3 cell = int3(id);
     float3 p = (float3)(cell);
     p = TransformPoint(p);
-    float v = (SampleDensity(p)-_IsoLevel);
+    bool terrainEdit = false;
+    float v = (SampleDensity(p, terrainEdit)-_IsoLevel);
 
     GeneratedDensity[index] = v > 0 ? 1.0f : 0.0f;
 }

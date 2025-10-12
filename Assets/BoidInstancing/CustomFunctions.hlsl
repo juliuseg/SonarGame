@@ -9,8 +9,12 @@ void GetSandColor_float(float BiomeID, out float4 Out)
         Out = _SandColor;
     } else if (BiomeID == 1) {
         Out = _RedSandColor;
-    } else {
+    } else if (BiomeID == 2) {
         Out = _GreenSandColor;
+    } else if (BiomeID == 3) {
+        Out = _OpenBiomeColor;
+    } else {
+        Out = _RockColor;
     }
 }
 

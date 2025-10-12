@@ -2,12 +2,13 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
 using Unity.Collections;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(MeshFilter))]
 public class MCBaker : MonoBehaviour
 {
     [Header("Bake Settings")]
-    public ComputeShader shader;
+    public ComputeShader terrainGenerationShader;
 
     public MCSettings settings;
 
@@ -26,16 +27,19 @@ public class MCBaker : MonoBehaviour
     
     private const int TRIANGLE_STRIDE = sizeof(float) * (3*3+3);
 
+    private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
+
     private int _kernelMain;
-    void Awake() => _kernelMain = shader.FindKernel("Main");
+    void Awake() => _kernelMain = terrainGenerationShader.FindKernel("TerrainGeneration");
     
 
-    public void RunAsync(Vector3 position, System.Action<Mesh, uint> onComplete)
+    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint> onComplete)
     {
-        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null, biomeBuffer = null;
+        float startTime = Time.realtimeSinceStartup;
+        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null, biomeBuffer = null, terraformEditBuf = null;
 
         // use the asset directly; no Instantiate (or Destroy it if you insist on instancing)
-        var cs = shader;
+        var cs = terrainGenerationShader;
 
         void ReleaseAll()
         {
@@ -46,6 +50,7 @@ public class MCBaker : MonoBehaviour
             candUp?.Release();   candUp = null;
             biomeMask?.Release(); biomeMask = null;
             biomeBuffer?.Release(); biomeBuffer = null;
+            terraformEditBuf?.Release(); terraformEditBuf = null;
         }
 
         try
@@ -100,6 +105,21 @@ public class MCBaker : MonoBehaviour
             biomeBuffer.SetData(biomeOffsets);
             cs.SetBuffer(_kernelMain, "_BiomeDensityOffsets", biomeBuffer);
 
+            if (terraformEdits.Count > 0)
+            {
+                terraformEditBuf = new ComputeBuffer(terraformEdits.Count, TERRAFORM_EDIT_STRIDE, ComputeBufferType.Structured);
+                terraformEditBuf.SetData(terraformEdits);
+                cs.SetBuffer(_kernelMain, "_TerraformEdits", terraformEditBuf);
+            }
+            else
+            {
+                terraformEditBuf = new ComputeBuffer(1, TERRAFORM_EDIT_STRIDE, ComputeBufferType.Structured);
+                terraformEditBuf.SetData(new TerraformEdit[] { new TerraformEdit { position = Vector3.zero, strength = 0.0f, radius = 0.0f } });
+                cs.SetBuffer(_kernelMain, "_TerraformEdits", terraformEditBuf);
+            }
+            cs.SetInt("_TerraformEditsCount", terraformEdits.Count);
+
+
 
             cs.GetKernelThreadGroupSizes(_kernelMain, out uint tgX, out uint tgY, out uint tgZ);
             int dx = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
@@ -109,6 +129,7 @@ public class MCBaker : MonoBehaviour
 
             cntBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(triBuf, cntBuf, 0);
+
 
             AsyncGPUReadback.Request(cntBuf, reqCount =>
             {
@@ -157,7 +178,10 @@ public class MCBaker : MonoBehaviour
                                     }
 
                                     uint mask = reqBiome.GetData<uint>()[0];
+                                    float elapsed = Time.realtimeSinceStartup - startTime;
+                                    Debug.Log($"MCBaker.RunAsync completed in {elapsed * 1000f:F1} ms  |  Triangles: {triCount}, position: {position}");
                                     onComplete?.Invoke(mesh, mask);
+                                    
                                 }
                                 finally
                                 {

@@ -1,4 +1,4 @@
-#pragma kernel Main
+#pragma kernel TerrainGeneration
 #include "Includes/MarchTables.compute"
 // #include "Includes/Noise.compute"
 // #include "Includes/Worley.hlsl"
@@ -13,6 +13,8 @@ struct MCTriangle {
 
     float3 colorWS;
 };
+
+
 
 static const int3 cornerOffsets[8] = {
     int3(0,0,0), // 0
@@ -36,7 +38,7 @@ RWStructuredBuffer<uint> _BiomeMask; // length = 1
 
 
 
-void AppendTriangle(float3 pos, float3 pos1, float3 pos2, uint triSeed)
+void AppendTriangle(float3 pos, float3 pos1, float3 pos2, uint triSeed, bool terrainEditAll)
 {
     float3 c = (pos + pos1 + pos2) * (1.0/3.0);
 
@@ -51,22 +53,23 @@ void AppendTriangle(float3 pos, float3 pos1, float3 pos2, uint triSeed)
     // float3 ac = pos2 - pos;
     // float3 n = normalize(cross(ab, ac));
 
-
-    t.colorWS = GetBiomeVertexColor(c);
-
+    if (terrainEditAll)
+    {
+        t.colorWS = float3(100, 0, 0); // Set to something large, then it will default as stone!
+    }
+    else
+    {
+        t.colorWS = GetBiomeVertexColor(c);
+    }
 
     // inside your shader
     uint biomeIndex = (uint)t.colorWS.x;              // convert float biome ID to int
     uint bit = 1u << biomeIndex;              // one-hot bit mask
     InterlockedOr(_BiomeMask[0], bit);        // atomically set bit
 
-
-    // t.colorWS = float3(2, 0, 0);
-
-
     _GeneratedTriangles.Append(t);
 
- 
+
 }
 
 
@@ -79,60 +82,120 @@ float3 TransformPoint(float3 p) {
 
 
 
+// groupshared caches (smaller now)
+groupshared float gDensity[9][9][9];
+groupshared uint  gEditMask[9][9][9]; // 0/1
 
 [numthreads(8,8,8)]
-void Main(uint3 id : SV_DispatchThreadID)
+void TerrainGeneration(uint3 id  : SV_DispatchThreadID,
+                       uint3 gid : SV_GroupID,
+                       uint3 tid : SV_GroupThreadID)
 {
-    if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y || id.z >= _ChunkDims.z) return;
+    // no early return before sync
+    bool active = (id.x < _ChunkDims.x && id.y < _ChunkDims.y && id.z < _ChunkDims.z);
 
-    float  cornerValues[8];
-    float3 cornerPos[8];
+    const uint3 base = gid * 8u;
 
-    int3 cell = int3(id);
-    [unroll] for (int i = 0; i < 8; i++) {
-        float3 p = (float3)(cell + cornerOffsets[i]);
-        p = TransformPoint(p);
-        float v = SampleDensity(p);
-        cornerPos[i] = p;
-        cornerValues[i] = v;
+    // -------- Phase 1: fill 9^3 corner densities with flat, even work split --------
+    // linear thread index in [0..511]
+    uint lidx = tid.x + tid.y*8u + tid.z*64u;
 
-        // InterlockedMin(_MinMax[0], asuint(v));
-        // InterlockedMax(_MinMax[1], asuint(v));
+    // 9^3 = 729 corners; stride by 512
+    for (uint i = lidx; i < 729u; i += 512u)
+    {
+        uint z = i / 81u;
+        uint rem = i - z*81u;
+        uint y = rem / 9u;
+        uint x = rem - y*9u;
+
+        uint3 cornerCell = base + uint3(x, y, z); // inclusive corner grid index
+
+        bool inBounds = (cornerCell.x <= _ChunkDims.x) &
+                        (cornerCell.y <= _ChunkDims.y) &
+                        (cornerCell.z <= _ChunkDims.z);
+
+        float dens = 1e6;
+        uint  edited = 0u;
+
+        if (inBounds)
+        {
+            // sample in world space
+            float3 wpos = TransformPoint((float3)cornerCell);
+            bool terrainEdit = false;
+            dens = SampleDensity(wpos, terrainEdit);
+            edited = terrainEdit ? 1u : 0u;
+        }
+
+        gDensity [x][y][z] = dens;
+        gEditMask[x][y][z] = edited;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    // -------- Phase 2: per-voxel MC using cached densities --------
+    if (!active) return;
+
+    float cornerValues[8];
+    bool  terrainEditAll = false;
+
+    [unroll]
+    for (int i = 0; i < 8; i++)
+    {
+        int3 off = cornerOffsets[i];
+        uint lx = tid.x + off.x;
+        uint ly = tid.y + off.y;
+        uint lz = tid.z + off.z;
+
+        cornerValues[i] = gDensity [lx][ly][lz];
+        terrainEditAll  = terrainEditAll || (gEditMask[lx][ly][lz] != 0u);
     }
 
     int cubeIndex = 0;
-    [unroll] for (int i = 0; i < 8; i++) {
-        if (cornerValues[i] < _IsoLevel) cubeIndex |= (1 << i);
-    }
+    [unroll] for (int i = 0; i < 8; i++)
+        cubeIndex |= (cornerValues[i] < _IsoLevel) ? (1 << i) : 0;
 
     int edgeMask = edges[cubeIndex];
     if (edgeMask == 0) return;
 
-    float3 edgeVerts[12];
-    [unroll] for (int e = 0; e < 12; e++) {
-        if (edgeMask & (1 << e)) {
+    float3 edgeVertsWS[12];
+
+    // precompute the voxel’s 8 grid-space corner positions once
+    float3 cornerPosGrid[8];
+    [unroll]
+    for (int i = 0; i < 8; i++)
+        cornerPosGrid[i] = (float3)(base + tid + cornerOffsets[i]);
+
+    [unroll]
+    for (int e = 0; e < 12; e++)
+    {
+        if (edgeMask & (1 << e))
+        {
             int c0 = cornerIndexAFromEdge[e];
             int c1 = cornerIndexBFromEdge[e];
             float v0 = cornerValues[c0];
             float v1 = cornerValues[c1];
+
             float denom = v1 - v0;
-            float t = (abs(denom) > 1e-6) ? (_IsoLevel - v0) / denom : 0.5;
+            float t = (abs(denom) > 1e-6) ? ((_IsoLevel - v0) / denom) : 0.5;
             t = saturate(t);
-            edgeVerts[e] = lerp(cornerPos[c0], cornerPos[c1], t);
+
+            // lerp in grid space, then single transform to WS (affine-safe)
+            float3 pGrid = lerp(cornerPosGrid[c0], cornerPosGrid[c1], t);
+            edgeVertsWS[e] = TransformPoint(pGrid);
         }
     }
 
-    for (int k = 0; triangulation[cubeIndex][k] != -1; k += 3) {
-        int e0 = triangulation[cubeIndex][k];
+    for (int k = 0; triangulation[cubeIndex][k] != -1; k += 3)
+    {
+        int e0 = triangulation[cubeIndex][k+0];
         int e1 = triangulation[cubeIndex][k+1];
         int e2 = triangulation[cubeIndex][k+2];
-        float3 v0 = edgeVerts[e0];
-        float3 v1 = edgeVerts[e1];
-        float3 v2 = edgeVerts[e2];
 
-        // derive a stable per-triangle seed (e.g. from dispatch ID and loop index)
+        float3 v0 = edgeVertsWS[e0];
+        float3 v1 = edgeVertsWS[e1];
+        float3 v2 = edgeVertsWS[e2];
+
         uint triSeed = (id.x*73856093u) ^ (id.y*19349663u) ^ (id.z*83492791u) ^ (uint)k;
-
-        AppendTriangle(v0, v1, v2, triSeed);
-    } 
+        AppendTriangle(v0, v1, v2, triSeed, terrainEditAll);
+    }
 }

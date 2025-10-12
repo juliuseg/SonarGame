@@ -59,9 +59,10 @@ Material:
     - _QueueOffset: 0
     - _Test: 1
     m_Colors:
-    - _GreenSandColor: {r: 0.048926905, g: 0.5566038, b: 0.013127446, a: 1}
-    - _RedSandColor: {r: 0.6981132, g: 0.17029682, b: 0.14159843, a: 1}
-    - _RockColor: {r: 0.2830189, g: 0.2830189, b: 0.2830189, a: 1}
-    - _SandColor: {r: 0.8679245, g: 0.66514236, b: 0.20060521, a: 1}
+    - _GreenSandColor: {r: 0.14444256, g: 0.2735849, b: 0.13550195, a: 1}
+    - _OpenBiomeColor: {r: 0, g: 0.3109902, b: 0.6415094, a: 1}
+    - _RedSandColor: {r: 0.509434, g: 0.2284364, b: 0.21386614, a: 1}
+    - _RockColor: {r: 0.1981132, g: 0.1981132, b: 0.1981132, a: 1}
+    - _SandColor: {r: 0.7924528, g: 0.4975088, b: 0.17568529, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

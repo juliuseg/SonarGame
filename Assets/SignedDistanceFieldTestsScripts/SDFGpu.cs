@@ -18,6 +18,9 @@ public sealed class SDFGpu : IDisposable
     readonly uint tgZX, tgZY, tgZZ;
     readonly uint tgSDFX, tgSDFY, tgSDFZ; // 64,1,1 expected
 
+    private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
+
+
     public SDFGpu(ComputeShader density, ComputeShader edt, MCSettings cfg)
     {
         densityShader = density;
@@ -43,6 +46,7 @@ public sealed class SDFGpu : IDisposable
         Action<float[,,], ComputeBuffer, object> onComplete,
         object userState = null)
     {
+        float startTime = Time.realtimeSinceStartup;        
         // dims
         Vector3Int core = settings.chunkDims;
         int h = settings.halo;
@@ -82,6 +86,12 @@ public sealed class SDFGpu : IDisposable
         densityShader.SetFloat("_BiomeBorder", settings.biomeBorder);
         densityShader.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
         densityShader.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
+
+        // Terraform Edits, just set as nothing
+        ComputeBuffer terraformEditBuf = new ComputeBuffer(1, TERRAFORM_EDIT_STRIDE, ComputeBufferType.Structured);
+        terraformEditBuf.SetData(new TerraformEdit[] { new TerraformEdit { position = Vector3.zero, strength = 0.0f, radius = 0.0f } });
+        densityShader.SetBuffer(kDensity, "_TerraformEdits", terraformEditBuf);
+        densityShader.SetInt("_TerraformEditsCount", 0);
 
         float[] biomeOffsets = { 0.0f, -0.2f, -0.31f };
         ComputeBuffer biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float));
@@ -126,6 +136,7 @@ public sealed class SDFGpu : IDisposable
                 SafeRelease(edtOutBuf);
                 SafeRelease(edtInBuf);
                 SafeRelease(biomeBuffer);
+                SafeRelease(terraformEditBuf);
             }
 
             try
@@ -161,6 +172,9 @@ public sealed class SDFGpu : IDisposable
 
                 // free temps before callback
                 FreeTemps();
+
+                float elapsed = Time.realtimeSinceStartup - startTime;
+                // Debug.Log($"SDFGpu.GenerateAsync completed in {elapsed * 1000f:F1} ms  |  position: {position}");
 
                 onComplete?.Invoke(data, sdfBuf, userState);
             }
