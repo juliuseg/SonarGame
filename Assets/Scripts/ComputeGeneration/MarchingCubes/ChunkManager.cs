@@ -8,6 +8,8 @@ public class ChunkManager
 
     public Dictionary<Vector3Int, Chunk> chunks => _chunks;
 
+    private readonly Dictionary<Vector3Int, List<TerraformEdit>> _offloadedEdits = new();
+
     public MCSettings settings;
 
     public ChunkManager(MCSettings settings)
@@ -20,10 +22,18 @@ public class ChunkManager
         return _chunks.TryGetValue(coord, out chunk);
     }
 
-    public void RemoveChunk(Vector3Int coord)
+    public bool TryGetOffloadedEdits(Vector3Int coord, bool remove, out List<TerraformEdit> edits)
     {
-        _chunks.Remove(coord);
+
+        bool success = _offloadedEdits.TryGetValue(coord, out edits);
+        if (remove)
+            _offloadedEdits.Remove(coord);
+        else
+            edits = null;
+
+        return success;
     }
+
 
     public void SetChunk(Vector3Int coord, Chunk chunk)
     {
@@ -43,6 +53,11 @@ public class ChunkManager
     {
         if (_chunks.TryGetValue(coord, out var chunk))
         {
+            if (chunk.terraformEdits.Count > 0){
+                _offloadedEdits.Add(coord, chunk.terraformEdits);
+                Debug.Log($"Offloaded {chunk.terraformEdits.Count} terraform edits for chunk {coord}");
+            }
+
             if (chunk.gameObject != null)
             {
                 var mf = chunk.gameObject.GetComponent<MeshFilter>();
@@ -60,7 +75,6 @@ public class ChunkManager
             if (chunk.sdfBuffer != null) chunk.sdfBuffer.Release();
             if (chunk.sdfData != null) chunk.sdfData = null;
             _chunks.Remove(coord);
-            // _pending.Remove(coord);
         }
     }
 

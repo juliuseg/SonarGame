@@ -179,7 +179,7 @@ public class MCBaker : MonoBehaviour
 
                                     uint mask = reqBiome.GetData<uint>()[0];
                                     float elapsed = Time.realtimeSinceStartup - startTime;
-                                    Debug.Log($"MCBaker.RunAsync completed in {elapsed * 1000f:F1} ms  |  Triangles: {triCount}, position: {position}");
+                                    // Debug.Log($"MCBaker.RunAsync completed in {elapsed * 1000f:F1} ms  |  Triangles: {triCount}, position: {position}");
                                     onComplete?.Invoke(mesh, mask);
                                     
                                 }

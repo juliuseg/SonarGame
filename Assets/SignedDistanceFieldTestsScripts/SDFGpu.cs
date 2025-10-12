@@ -176,6 +176,7 @@ public sealed class SDFGpu : IDisposable
                 float elapsed = Time.realtimeSinceStartup - startTime;
                 // Debug.Log($"SDFGpu.GenerateAsync completed in {elapsed * 1000f:F1} ms  |  position: {position}");
 
+                
                 onComplete?.Invoke(data, sdfBuf, userState);
             }
             catch

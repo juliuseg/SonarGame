@@ -122,6 +122,8 @@ public class ChunkLoader : MonoBehaviour
 
             // Get existing chunk (if any)
             chunkManager.TryGetChunk(coord, out var existingChunk);
+            
+
             Vector3 centerWorld = chunkManager.ChunkCenterWorld(coord);
             bool outOfRange = GetRadiusRange(target.position, centerWorld, radius);
 
@@ -133,7 +135,14 @@ public class ChunkLoader : MonoBehaviour
             if (existingChunk == null)
             {
                 existingChunk = new Chunk(null, null, null);
+                
                 chunkManager.SetChunk(coord, existingChunk);
+            }
+
+            // Get offloaded edits (if any)
+            if (chunkManager.TryGetOffloadedEdits(coord, true, out var edits))
+            {
+                existingChunk.terraformEdits = edits;
             }
 
             // Track build state
@@ -154,6 +163,8 @@ public class ChunkLoader : MonoBehaviour
                 existingChunk.gameObject = go;
                 chunkManager.SetChunk(coord, existingChunk);
             }
+
+            
 
             if (centerWorld.y - chunkHalfHeight < waterLevel)
             {

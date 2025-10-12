@@ -233,7 +233,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: deepRadius
-      value: 100
+      value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: densityShader
@@ -241,7 +241,7 @@ PrefabInstance:
       objectReference: {fileID: 7200000, guid: ad6f752c1017f45a0a23d5639214f403, type: 3}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: surfaceRadius
-      value: 100
+      value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: maxBuildsPerFrame

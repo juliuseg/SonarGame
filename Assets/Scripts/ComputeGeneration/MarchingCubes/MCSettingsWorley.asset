@@ -23,9 +23,9 @@ MonoBehaviour:
   caveHeightFalloff: 20
   displacementStrength: 0.05
   displacementScale: 12.5
-  octaves: 2
-  lacunarity: 3
-  persistence: 0.7
+  octaves: 3
+  lacunarity: 2.4
+  persistence: 0.6
   cosUp: 0.8
   cosDown: 0.8
   cosSide: 0.3
