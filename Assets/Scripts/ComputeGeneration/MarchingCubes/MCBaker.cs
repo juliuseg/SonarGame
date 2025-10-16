@@ -27,8 +27,10 @@ public class MCBaker : MonoBehaviour
     }
 
     
-    private const int TRIANGLE_STRIDE = sizeof(float) * (3*3+3);
 
+    
+    private const int TRIANGLE_STRIDE = sizeof(float) * (3*3+3);
+    private const int SPAWN_POINT_STRIDE = sizeof(float) * (3*3);
     private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
 
     private int _kernelMain;
@@ -43,7 +45,7 @@ public class MCBaker : MonoBehaviour
     }
     
 
-    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint, float> onComplete)
+    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint, List<SpawnPoint>, float> onComplete)
     {
         float startTime = Time.realtimeSinceStartup;
 
@@ -53,6 +55,7 @@ public class MCBaker : MonoBehaviour
 
         ComputeBuffer headerBuf = null;
         ComputeBuffer triBuf = null;
+        ComputeBuffer spawnPointsBuf = null;
         ComputeBuffer biomeBuffer = null;
         ComputeBuffer terraformEditBuf = null;
         ComputeBuffer combinedBuf = null;
@@ -64,6 +67,7 @@ public class MCBaker : MonoBehaviour
         {
             headerBuf?.Release(); headerBuf = null;
             triBuf?.Release(); triBuf = null;
+            spawnPointsBuf?.Release(); spawnPointsBuf = null;
             biomeBuffer?.Release(); biomeBuffer = null;
             terraformEditBuf?.Release(); terraformEditBuf = null;
             combinedBuf?.Release(); combinedBuf = null;
@@ -80,16 +84,25 @@ public class MCBaker : MonoBehaviour
 
             int maxCells = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
             int maxTriangles = maxCells * 5;
-            if (maxTriangles <= 0) { onComplete?.Invoke(null, 0, 0f); return; }
+            if (maxTriangles <= 0) { onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f); return; }
 
+            // Header buffer
             headerBuf = new ComputeBuffer(1, sizeof(uint) * 2, ComputeBufferType.Structured);
+
+            // Triangle buffer
             triBuf = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
             triBuf.SetCounterValue(0);
 
-            int combinedBytes = HEADER_BYTES + maxTriangles * TRIANGLE_STRIDE;
-            combinedBuf = new ComputeBuffer(Mathf.CeilToInt(combinedBytes / 4f), 4, ComputeBufferType.Raw);
+            // Spawn points buffer
+            spawnPointsBuf = new ComputeBuffer(maxTriangles, SPAWN_POINT_STRIDE, ComputeBufferType.Append);
+            spawnPointsBuf.SetCounterValue(0);
 
-            // biome offsets
+            
+            // Combined buffer
+            int combinedBytes = HEADER_BYTES + maxTriangles * (TRIANGLE_STRIDE + SPAWN_POINT_STRIDE);
+            combinedBuf = new ComputeBuffer(Mathf.CeilToInt(combinedBytes / 4f), 4, ComputeBufferType.Raw);
+            
+            // Biome offsets
             float[] biomeOffsets = new float[settings.biomeSettings.Length];
             for (int i = 0; i < settings.biomeSettings.Length; i++)
                 biomeOffsets[i] = settings.biomeSettings[i].densityOffset;
@@ -112,6 +125,7 @@ public class MCBaker : MonoBehaviour
             // bind all
             genShader.SetBuffer(kMain, "_Header", headerBuf);
             genShader.SetBuffer(kMain, "_GeneratedTriangles", triBuf);
+            genShader.SetBuffer(kMain, "_GeneratedSpawnPoints", spawnPointsBuf);
             genShader.SetBuffer(kMain, "_BiomeDensityOffsets", biomeBuffer);
             genShader.SetBuffer(kMain, "_TerraformEdits", terraformEditBuf);
             genShader.SetInt("_TerraformEditsCount", terraformEdits?.Count ?? 0);
@@ -152,14 +166,22 @@ public class MCBaker : MonoBehaviour
             triCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(triBuf, triCountBuf, 0);
 
+            var spawnCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+            ComputeBuffer.CopyCount(spawnPointsBuf, spawnCountBuf, 0);
+
+
             // pack kernel
             packShader.SetBuffer(kPack, "_Header", headerBuf);
             packShader.SetBuffer(kPack, "_GeneratedTriangles", triBuf);
+            packShader.SetBuffer(kPack, "_GeneratedSpawnPoints", spawnPointsBuf);
             packShader.SetBuffer(kPack, "_Combined", combinedBuf);
             packShader.SetBuffer(kPack, "_TriCountRaw", triCountBuf);
+            packShader.SetBuffer(kPack, "_SpawnPointCountRaw", spawnCountBuf);
             packShader.SetInt("_TriangleStrideBytes", TRIANGLE_STRIDE);
+            packShader.SetInt("_SpawnPointStrideBytes", SPAWN_POINT_STRIDE);
             packShader.SetInt("_HeaderBytes", HEADER_BYTES);
             packShader.SetInt("_MaxTriangles", maxTriangles);
+
 
             packShader.GetKernelThreadGroupSizes(kPack, out uint px, out _, out _);
             int groups = Mathf.CeilToInt(maxTriangles / (float)px);
@@ -175,33 +197,54 @@ public class MCBaker : MonoBehaviour
                     if (req.hasError)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null, 0, elapsed);
+                        onComplete?.Invoke(null, 0, new List<SpawnPoint>(), elapsed);
                         return;
                     }
 
                     var raw = req.GetData<byte>();
                     uint triCount = BitConverter.ToUInt32(raw.Slice(0, 4).ToArray(), 0);
                     uint biomeMask = BitConverter.ToUInt32(raw.Slice(4, 4).ToArray(), 0);
+                    uint spawnCount = BitConverter.ToUInt32(raw.Slice(8, 4).ToArray(), 0);
 
+                    
                     if (triCount == 0)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null, biomeMask, elapsed);
+                        onComplete?.Invoke(null, biomeMask, new List<SpawnPoint>(), elapsed);
                         return;
                     }
-
+                    // Triangles
                     int triBytes = (int)triCount * TRIANGLE_STRIDE;
                     int triOffset = HEADER_BYTES;
                     var triBytesArray = new NativeArray<byte>(triBytes, Allocator.Temp);
                     for (int i = 0; i < triBytes; i++)
                         triBytesArray[i] = raw[triOffset + i];
+                    
 
                     var triNative = triBytesArray.Reinterpret<MCTriangle>(1);
                     var mesh = ComposeMesh(triNative);
                     triBytesArray.Dispose();
 
+                    // Spawn points
+                    int spawnOffset = HEADER_BYTES + (int)triCount * TRIANGLE_STRIDE;
+                    int spawnBytes  = (int)spawnCount * SPAWN_POINT_STRIDE;
+
+                    var spawnBytesArray = new NativeArray<byte>(spawnBytes, Allocator.Temp);
+                    for (int i = 0; i < spawnBytes; i++)
+                        spawnBytesArray[i] = raw[spawnOffset + i];
+
+                    var spawnNative = spawnBytesArray.Reinterpret<SpawnPoint>(1);
+                    var spawnPoints = new List<SpawnPoint>(spawnNative.Length);
+                    // string debugString = "";
+                    for (int i = 0; i < spawnNative.Length; i++){
+                        spawnPoints.Add(spawnNative[i]);
+                    }
+                    // Debug.Log(debugString);
+
+                    spawnBytesArray.Dispose();
+
                     // Debug.Log("Readback request completed in " + elapsed.ToString("F2") + " milliseconds");
-                    onComplete?.Invoke(mesh, biomeMask, elapsed);
+                    onComplete?.Invoke(mesh, biomeMask, spawnPoints, elapsed);
                 }
                 finally
                 {
@@ -212,7 +255,7 @@ public class MCBaker : MonoBehaviour
         catch
         {
             ReleaseAll();
-            onComplete?.Invoke(null, 0, 0f);
+            onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f);
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 
 public class ChunkLoader : MonoBehaviour
@@ -38,6 +39,12 @@ public class ChunkLoader : MonoBehaviour
 
     private readonly HashSet<Vector3Int> _dirty = new();
 
+    // GPU Instancing
+    // private List<SpawnPoint> _allSpawnPoints = new();
+    
+    [SerializeField] private InstancingMesh instancingMeshCoral;
+    [SerializeField] private InstancingMesh instancingMeshRock;
+
     void Awake()
     {
         if (baker == null) baker = GetComponent<MCBaker>();
@@ -64,16 +71,134 @@ public class ChunkLoader : MonoBehaviour
         UnloadFar(center, chunkSize, radius);
 
 
-        // print($"Chunks: {chunkManager.chunks.Count}  Queue: {_buildQueue.Count}  Pending: {_pending.Count}");
 
         BuildQueued(chunkSize, radius);
 
+        
+        List<SpawnPoint>[] allPoints = GetAllSpawnPoints(radius*0.5f);
+        for (int i = 0; i < settings.biomeSettings.Length; i++)
+        {
+            List<InstancingMesh> instancingMeshes = settings.biomeSettings[i].instancingMeshes;
+            var probs = new float[instancingMeshes.Count];
+            for (int j = 0; j < instancingMeshes.Count; j++)
+            {
+                probs[j] = instancingMeshes[j].probability;
+            }
 
-        // Debug chunks
+            var lists = SpawnDistributor.Distribute(allPoints[i], probs, i);
+            for (int j = 0; j < lists.Count; j++)
+            {
+                DrawSpawnInstances(lists[j], instancingMeshes[j]);
+            }
+        }
+
+        // Make function call for GPU Instancing from chucks.
+        // var probs = new float[] { instancingMeshCoral.probability, instancingMeshRock.probability }; // coral, rock
+        // var lists = SpawnDistributor.Distribute(GetAllSpawnPoints()[1], probs);
+        // // Debug.Log($"Coral spawn points: {lists[0].Count}, Rock spawn points: {lists[1].Count}");
+        // DrawSpawnInstances(radius, lists[0], instancingMeshCoral);
+        // DrawSpawnInstances(radius, lists[1], instancingMeshRock);
+
+
+    }
+
+    // ----- GPU Instancing -----
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float Hash(Vector3 p)
+    {
+        // quantize to millimeter scale (adjust as needed)
+        int xi = Mathf.FloorToInt(p.x * 1000f);
+        int yi = Mathf.FloorToInt(p.y * 1000f);
+        int zi = Mathf.FloorToInt(p.z * 1000f);
+
+        uint h = (uint)(xi * 374761393 + yi * 668265263 + zi * 2147483647);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= (h >> 16);
+        return (h & 0x00FFFFFF) / 16777216f;
     }
 
 
+
+    private List<SpawnPoint>[] GetAllSpawnPoints(float radius)
+    {
+        int biomeCount = settings.biomeSettings.Length;
+        List<SpawnPoint>[] allPoints = new List<SpawnPoint>[biomeCount];
+        for (int i = 0; i < biomeCount; i++)
+            allPoints[i] = new List<SpawnPoint>();
+
+        foreach (var kvp in chunkManager.chunks)
+        {
+            Vector3 worldCenter = chunkManager.ChunkCenterWorld(kvp.Key);
+            if(GetRadiusRange(target.position, worldCenter, radius)) continue;
+            
+
+            var chunk = kvp.Value;
+            if (chunk.spawnPoints == null || chunk.spawnPoints.Count == 0)
+                continue;
+
+            foreach (var biomeIndex in chunk.GetBiomeMaskList())
+            {
+                if (biomeIndex < 0 || biomeIndex >= biomeCount)
+                    continue;
+                allPoints[biomeIndex].AddRange(chunk.spawnPoints);
+            }
+        }
+
+        for (int i = 0; i < biomeCount; i++)
+            Debug.Log($"Biome {i} has {allPoints[i].Count} spawn points");
+
+        return allPoints;
+    }
+
+
+    // call this once per frame after terrain builds
+    private void DrawSpawnInstances(List<SpawnPoint> spawnPoints, InstancingMesh instancingMesh)
+    {
+        if (instancingMesh == null || instancingMesh.material == null) return;
+        Mesh instanceMesh = instancingMesh.mesh;
+        Material instanceMaterial = instancingMesh.material;
+        float meshScale = instancingMesh.scale;
+        float meshScaleOffset = instancingMesh.scaleOffset;
+        float meshYOffset = instancingMesh.yOffset;
+
+        // after collecting from all chunks
+        int total = spawnPoints.Count;
+        if (total == 0) return;
+
+
+        int count = total;
+        // Debug.Log($"Drawing {count} spawn points");
+
+        // prepare matrices
+        Matrix4x4[] matrices = new Matrix4x4[count];
+
+        int drawn = 0;
+        
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 pos = spawnPoints[drawn + i].positionWS;
+            Vector3 normal = spawnPoints[drawn + i].normalWS;
+            float scale = meshScale + (Hash(pos) * 2f - 1f) * meshScaleOffset;
+            scale = Mathf.Max(scale, 0.01f);
+
+            matrices[i] = Matrix4x4.TRS(
+                pos + (1-normal.y) * meshYOffset * Vector3.up,
+                Quaternion.Euler(0,1f,0),//Quaternion.FromToRotation(Vector3.up, normal),
+                Vector3.one * scale
+            );
+
+        }
+
+        Graphics.DrawMeshInstanced(instanceMesh, 0, instanceMaterial, matrices, count);
+        
+        
+    }
+
+
+
     // ----- core -----
+
 
     
 
@@ -134,7 +259,7 @@ public class ChunkLoader : MonoBehaviour
             // If no chunk yet, create placeholder
             if (existingChunk == null)
             {
-                existingChunk = new Chunk(null, null, null);
+                existingChunk = new Chunk(null, null, null, null, 100);
                 
                 chunkManager.SetChunk(coord, existingChunk);
             }
@@ -168,9 +293,9 @@ public class ChunkLoader : MonoBehaviour
 
             if (centerWorld.y - chunkHalfHeight < waterLevel)
             {
-                baker.RunAsync(centerWorld, existingChunk.terraformEdits, (mesh, mask, elapsed) =>
+                baker.RunAsync(centerWorld, existingChunk.terraformEdits, (mesh, mask, spawnPoints, elapsed) =>
                 {
-                    Debug.Log($"Mesh generation completed in {elapsed:F2} ms");
+                    // Debug.Log($"Mesh generation completed in {elapsed:F2} ms");
                     if (!_buildStates.TryGetValue(coord, out var st) || !ReferenceEquals(st, bstate))
                         return; // outdated async callback
 
@@ -182,6 +307,11 @@ public class ChunkLoader : MonoBehaviour
                     // if chunk object destroyed in the meantime, abort
                     if (chunk.gameObject == null || chunk.gameObject.Equals(null))
                         return;
+
+                    // spawnPoints.Shuffle();
+                    chunk.spawnPoints = spawnPoints;
+
+                    chunk.biomeMask = mask;
 
                     // get or add components safely
                     var go = chunk.gameObject;

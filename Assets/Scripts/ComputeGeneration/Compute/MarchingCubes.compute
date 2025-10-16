@@ -1,23 +1,21 @@
 #pragma kernel TerrainGeneration
 #include "Includes/MarchTables.compute"
 #include "Includes/SampleDensity.hlsl"
+#include "Includes/Structs.hlsl"
 
-struct MCTriangle
-{
-    float3 positionWS0;
-    float3 positionWS1;
-    float3 positionWS2;
-    float3 colorWS;
-};
+
 
 // header holds total triangle count and biome mask
 // only element [0] is used
 RWStructuredBuffer<uint2> _Header; // { triCount, biomeMask }
 AppendStructuredBuffer<MCTriangle> _GeneratedTriangles;
+AppendStructuredBuffer<SpawnPoint> _GeneratedSpawnPoints;
 
 float4x4 _Transform;
 float _IsoLevel;
 uint3 _ChunkDims;
+
+static const float3 UP_VECTOR = float3(0, 1, 0);
 
 static const int3 cornerOffsets[8] = {
     int3(0,0,0), int3(1,0,0), int3(1,1,0), int3(0,1,0),
@@ -31,30 +29,51 @@ float3 TransformPoint(float3 p)
 
 void AppendTriangle(float3 pos, float3 pos1, float3 pos2, bool terrainEditAll)
 {
-    float3 c = (pos + pos1 + pos2) * (1.0 / 3.0);
+    float3 c = (pos + pos1 + pos2) / 3.0;
 
     MCTriangle t;
     t.positionWS0 = pos;
     t.positionWS1 = pos1;
     t.positionWS2 = pos2;
 
-    if (terrainEditAll)
-    {
-        t.colorWS = float3(100, 0, 0);
-    }
-    else
-    {
-        t.colorWS = GetBiomeVertexColor(c);
-    }
+    t.colorWS = terrainEditAll ? float3(100, 0, 0) : GetBiomeVertexColor(c);
 
-    // biome mask and triangle count
     uint biomeIndex = (uint)t.colorWS.x;
     uint bit = 1u << biomeIndex;
-    InterlockedAdd(_Header[0].x, 1);     // count triangles
-    InterlockedOr(_Header[0].y, bit);    // combine biome bits
+    InterlockedAdd(_Header[0].x, 1);
+    InterlockedOr(_Header[0].y, bit);
 
     _GeneratedTriangles.Append(t);
+
+    if (terrainEditAll)
+        return;
+
+    // --- probability-based spawn ---
+    float3 normal = normalize(cross(pos1 - pos, pos2 - pos));
+    float area = 0.5 * length(cross(pos1 - pos, pos2 - pos));
+
+    // normalize area around expected average (0.3)
+    // base 2% chance at 0.3 area, scales linearly
+    float baseArea = 0.3;
+    float baseChance = 0.1;
+    float chance = baseChance * (area / baseArea);
+
+    // clamp to max reasonable probability (avoid 100%)
+    chance = saturate(chance);
+
+    // pseudo-random based on triangle center
+    float rnd = frac(sin(dot(c, float3(12.9898, 78.233, 45.164))) * 43758.5453);
+
+    if (rnd < chance && dot(normal, UP_VECTOR) > 0.6) // Add also that the normal dot vector UP_VECTOR i define in scope, is more than 0.5.
+    {
+        SpawnPoint s;
+        s.positionWS = pos;     // or use c if you prefer center
+        s.normalWS = normal;
+        s.colorWS = t.colorWS;
+        _GeneratedSpawnPoints.Append(s);
+    }
 }
+
 
 // shared caches
 groupshared float gDensity[9][9][9];

@@ -232,9 +232,21 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: meshScale
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: deepRadius
       value: 100
       objectReference: {fileID: 0}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: meshYOffset
+      value: -0.75
+      objectReference: {fileID: 0}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: instanceMesh
+      value: 
+      objectReference: {fileID: -2386649039575133238, guid: a8c35ca4b95a03d4eb5ed75ac4507517, type: 3}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: densityShader
       value: 
@@ -244,9 +256,21 @@ PrefabInstance:
       value: 100
       objectReference: {fileID: 0}
     - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: instanceMaterial
+      value: 
+      objectReference: {fileID: 2100000, guid: b0cb33e3762f244898ed62d7e7c38d55, type: 2}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: maxBuildsPerFrame
       value: 4
       objectReference: {fileID: 0}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: instancingMeshRock
+      value: 
+      objectReference: {fileID: 11400000, guid: 31a6a47f6f07f41e896dd84fd0533368, type: 2}
+    - target: {fileID: 635395016206681474, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: instancingMeshCoral
+      value: 
+      objectReference: {fileID: 11400000, guid: 2c2121c59bf95427797512fa87fb1af9, type: 2}
     - target: {fileID: 1981270668405195711, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: colorWall.x
       value: 1
@@ -678,6 +702,8 @@ MonoBehaviour:
   verticalSpeed: 5
   mouseSensitivity: 1
   lockCursor: 1
+  targetFrameRate: 120
+  vSyncCount: 1
 --- !u!114 &821945202
 MonoBehaviour:
   m_ObjectHideFlags: 0

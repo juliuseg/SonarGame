@@ -268,6 +268,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Rock4
       objectReference: {fileID: 0}
+    - target: {fileID: 6118804010202350072, guid: 75e83550df940894e9fe90acee16bd07, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7111467541348627435, guid: 75e83550df940894e9fe90acee16bd07, type: 3}
       propertyPath: m_LocalPosition.x
       value: -2.5961542
@@ -442,6 +446,10 @@ PrefabInstance:
     - target: {fileID: 6382516079786671053, guid: 45922620868e00140bf6e471d612f673, type: 3}
       propertyPath: m_Name
       value: Rock6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6382516079786671053, guid: 45922620868e00140bf6e471d612f673, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7982658196998310366, guid: 45922620868e00140bf6e471d612f673, type: 3}
       propertyPath: m_LocalPosition.x
@@ -734,6 +742,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Rock9
       objectReference: {fileID: 0}
+    - target: {fileID: 4411766673633282684, guid: 3464e210f803bf041bf3f4541615a9e5, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -817,6 +829,10 @@ PrefabInstance:
     - target: {fileID: 5657189634017983103, guid: 25644e6e5cc680e45958595163199289, type: 3}
       propertyPath: m_Name
       value: Rock3
+      objectReference: {fileID: 0}
+    - target: {fileID: 5657189634017983103, guid: 25644e6e5cc680e45958595163199289, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8707998119830161516, guid: 25644e6e5cc680e45958595163199289, type: 3}
       propertyPath: m_LocalPosition.x
@@ -919,6 +935,10 @@ PrefabInstance:
     - target: {fileID: 7597925848206211614, guid: 36c2e7e67d541674e821ca06e6a6e2d3, type: 3}
       propertyPath: m_Name
       value: Rock5
+      objectReference: {fileID: 0}
+    - target: {fileID: 7597925848206211614, guid: 36c2e7e67d541674e821ca06e6a6e2d3, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1059,6 +1079,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Rock1
       objectReference: {fileID: 0}
+    - target: {fileID: 1034754939580526974, guid: 93348ec5b53a5824b884bf5372cb36f3, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4037312115383583597, guid: 93348ec5b53a5824b884bf5372cb36f3, type: 3}
       propertyPath: m_LocalPosition.x
       value: 4.493846
@@ -1120,6 +1144,10 @@ PrefabInstance:
     - target: {fileID: 6267535118095173878, guid: 729740211cf424642ab0582e679d0609, type: 3}
       propertyPath: m_Name
       value: Rock10
+      objectReference: {fileID: 0}
+    - target: {fileID: 6267535118095173878, guid: 729740211cf424642ab0582e679d0609, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6963013776137239269, guid: 729740211cf424642ab0582e679d0609, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1186,6 +1214,10 @@ PrefabInstance:
     - target: {fileID: 5787968866882148797, guid: 85c14a3af8dd2c74fb7aa8739c82e8be, type: 3}
       propertyPath: m_Name
       value: Whale
+      objectReference: {fileID: 0}
+    - target: {fileID: 5787968866882148797, guid: 85c14a3af8dd2c74fb7aa8739c82e8be, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7352591331926027182, guid: 85c14a3af8dd2c74fb7aa8739c82e8be, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1288,6 +1320,10 @@ PrefabInstance:
     - target: {fileID: 8527658540802658942, guid: 1646c76c75b75d449ae1f8ff53c410c8, type: 3}
       propertyPath: m_Name
       value: Rock8
+      objectReference: {fileID: 0}
+    - target: {fileID: 8527658540802658942, guid: 1646c76c75b75d449ae1f8ff53c410c8, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1475,6 +1511,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Rock11
       objectReference: {fileID: 0}
+    - target: {fileID: 7599642855733124636, guid: 3a867d14bef6e7f49bd26bb8fc055423, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -1536,6 +1576,10 @@ PrefabInstance:
     - target: {fileID: 7684222337722238575, guid: 4d70aa0c11e9e2c43b1b52e83b27a9cb, type: 3}
       propertyPath: m_Name
       value: Rock7
+      objectReference: {fileID: 0}
+    - target: {fileID: 7684222337722238575, guid: 4d70aa0c11e9e2c43b1b52e83b27a9cb, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1621,6 +1665,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Rock2
       objectReference: {fileID: 0}
+    - target: {fileID: 296710026726428193, guid: 5890ca1772aa0a24088c879c7c639741, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3622435523093969970, guid: 5890ca1772aa0a24088c879c7c639741, type: 3}
       propertyPath: m_LocalPosition.x
       value: -6.036154
@@ -1682,6 +1730,10 @@ PrefabInstance:
     - target: {fileID: 238232932744706565, guid: 96d1d35fd35c56f46a0e34288e224767, type: 3}
       propertyPath: m_Name
       value: Rock
+      objectReference: {fileID: 0}
+    - target: {fileID: 238232932744706565, guid: 96d1d35fd35c56f46a0e34288e224767, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3824970399148066838, guid: 96d1d35fd35c56f46a0e34288e224767, type: 3}
       propertyPath: m_LocalPosition.x
