@@ -3,7 +3,7 @@
 #pragma kernel EDT_Z
 #pragma target 5.0
 
-int3 _ChunkDims;
+uint3 _ChunkDims;
 float _MaxDistance;
 int _BinarizeInput;      // 1 only for first pass
 int _UseExternalInput;   // 1 only for X pass
@@ -33,9 +33,9 @@ void EDT1D_Line(int fixedA, int fixedB, int axis)
     int n = (axis == 0) ? _ChunkDims.x : ((axis == 1) ? _ChunkDims.y : _ChunkDims.z);
 
     // NOTE: requires each axis <= 256. Increase if needed.
-    float f[256], d[256];
-    int   v[256];
-    float zt[257];
+    float f[32], d[32];
+    int   v[32];
+    float zt[33];
 
     // load
     [loop]
@@ -64,26 +64,25 @@ void EDT1D_Line(int fixedA, int fixedB, int axis)
 
     k = 0;
     [loop]
-    for (int q = 0; q < n; q++)
+    for (int p = 0; p < n; p++)
     {
-        while (zt[k+1] < q) k++;
+        while (zt[k+1] < p) k++;
         int pIdx = v[k];
-        float dval = (float)(q - pIdx);
-        d[q] = dval*dval + f[pIdx];
+        float dval = (float)(p - pIdx);
+        d[p] = dval*dval + f[pIdx];
     }
 
     // store
     [loop]
-    for (int i = 0; i < n; i++)
+    for (int j = 0; j < n; j++)
     {
-        int3 p = (axis == 0) ? int3(i, fixedA, fixedB) :
-                (axis == 1) ? int3(fixedA, i, fixedB) :
-                                int3(fixedA, fixedB, i);
+        int3 p = (axis == 0) ? int3(j, fixedA, fixedB) :
+                (axis == 1) ? int3(fixedA, j, fixedB) :
+                            int3(fixedA, fixedB, j);
 
-        float val = d[i];
-        
-        EDTBuffer[Index(p)] = val;
+        EDTBuffer[Index(p)] = d[j];
     }
+
 }
 
 [numthreads(8,8,1)]
@@ -113,7 +112,7 @@ void EDT_Z(uint3 id : SV_DispatchThreadID)
 #pragma kernel CopyBuffer
 RWStructuredBuffer<float> BufferDst;
 StructuredBuffer<float>   BufferSrc;
-int _Total;
+uint _Total;
 
 [numthreads(64,1,1)]
 void CopyBuffer(uint3 id : SV_DispatchThreadID)
@@ -131,7 +130,7 @@ StructuredBuffer<float>   EDTIn;   // inside distances (with halo padding)
 StructuredBuffer<float>   EDTOut;  // outside distances (with halo padding)
 RWStructuredBuffer<float> SDFHalos; // output, no halos
 
-int _Halo;
+uint _Halo;
 
 int Index3D(int3 p, int3 dims)
 {
@@ -142,7 +141,7 @@ int Index3D(int3 p, int3 dims)
 void ComputeSDFWithHalos(uint3 id : SV_DispatchThreadID)
 { 
     uint flat = id.x;
-    int total = _ChunkDims.x * _ChunkDims.y * _ChunkDims.z;
+    uint total = _ChunkDims.x * _ChunkDims.y * _ChunkDims.z;
     if (flat >= total) return;
 
     // decode flat index into local coords (within chunk)

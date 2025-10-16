@@ -168,8 +168,9 @@ public class ChunkLoader : MonoBehaviour
 
             if (centerWorld.y - chunkHalfHeight < waterLevel)
             {
-                baker.RunAsync(centerWorld, existingChunk.terraformEdits, (mesh, mask) =>
+                baker.RunAsync(centerWorld, existingChunk.terraformEdits, (mesh, mask, elapsed) =>
                 {
+                    Debug.Log($"Mesh generation completed in {elapsed:F2} ms");
                     if (!_buildStates.TryGetValue(coord, out var st) || !ReferenceEquals(st, bstate))
                         return; // outdated async callback
 
@@ -184,6 +185,7 @@ public class ChunkLoader : MonoBehaviour
 
                     // get or add components safely
                     var go = chunk.gameObject;
+
 
                     var mf = go.GetComponent<MeshFilter>();
                     var mc = go.GetComponent<MeshCollider>();
@@ -235,14 +237,24 @@ public class ChunkLoader : MonoBehaviour
 
                 st.sdfDone = true;
 
+                
+
                 if (!chunkManager.TryGetChunk(coord, out var chunk))
                 {
-                    buffer?.Release();
+                    // Always release buffer if chunk is gone
+                    if (buffer != null)
+                    {
+                        buffer.Release();
+                        buffer = null;
+                    }
                     return;
                 }
 
+
                 if (data == null || buffer == null)
                 {
+                    buffer?.Release();
+                    buffer = null;
                     Debug.LogWarning($"SDF generation failed for chunk: {coord}");
                     return;
                 }

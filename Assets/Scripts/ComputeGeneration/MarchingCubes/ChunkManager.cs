@@ -55,7 +55,7 @@ public class ChunkManager
         {
             if (chunk.terraformEdits.Count > 0){
                 _offloadedEdits.Add(coord, chunk.terraformEdits);
-                Debug.Log($"Offloaded {chunk.terraformEdits.Count} terraform edits for chunk {coord}");
+                // Debug.Log($"Offloaded {chunk.terraformEdits.Count} terraform edits for chunk {coord}");
             }
 
             if (chunk.gameObject != null)

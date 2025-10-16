@@ -91,6 +91,14 @@ float SampleTerraformEdits(float3 p)
 
 float SampleDensity(float3 p, out bool terrainEdit)
 {
+    // if (p.x+p.y+p.z < 0.0)
+    // {
+    //     terrainEdit = false;
+    //     return 100.0;
+    // } else {
+    //     terrainEdit = false;
+    //     return -100.0;
+    // }
     
     float worley = SampleWorleyCaves(p);
     float displacement = SampleFractalNoise(p);

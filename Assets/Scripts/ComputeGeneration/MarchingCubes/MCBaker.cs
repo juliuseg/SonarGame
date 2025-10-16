@@ -3,12 +3,14 @@ using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
 using Unity.Collections;
 using System.Collections.Generic;
+using System;
 
 [RequireComponent(typeof(MeshFilter))]
 public class MCBaker : MonoBehaviour
 {
     [Header("Bake Settings")]
     public ComputeShader terrainGenerationShader;
+    public ComputeShader packForReadbackShader;
 
     public MCSettings settings;
 
@@ -30,184 +32,192 @@ public class MCBaker : MonoBehaviour
     private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
 
     private int _kernelMain;
-    void Awake() => _kernelMain = terrainGenerationShader.FindKernel("TerrainGeneration");
+    private int _kernelPack;
+
+
+
+    void Awake() {
+
+        _kernelMain = terrainGenerationShader.FindKernel("TerrainGeneration");
+        _kernelPack = packForReadbackShader.FindKernel("PackForReadback");
+    }
     
 
-    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint> onComplete)
+    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint, float> onComplete)
     {
         float startTime = Time.realtimeSinceStartup;
-        ComputeBuffer triBuf = null, cntBuf = null, candDown = null, candSide = null, candUp = null, biomeMask = null, biomeBuffer = null, terraformEditBuf = null;
 
-        // use the asset directly; no Instantiate (or Destroy it if you insist on instancing)
-        var cs = terrainGenerationShader;
+        // Per-job shader instances to prevent shared-state conflicts
+        var genShader = Instantiate(terrainGenerationShader);
+        var packShader = Instantiate(packForReadbackShader);
+
+        ComputeBuffer headerBuf = null;
+        ComputeBuffer triBuf = null;
+        ComputeBuffer biomeBuffer = null;
+        ComputeBuffer terraformEditBuf = null;
+        ComputeBuffer combinedBuf = null;
+        ComputeBuffer triCountBuf = null;
+
+        const int HEADER_BYTES = 16;
 
         void ReleaseAll()
         {
+            headerBuf?.Release(); headerBuf = null;
             triBuf?.Release(); triBuf = null;
-            cntBuf?.Release(); cntBuf = null;
-            candDown?.Release(); candDown = null;
-            candSide?.Release(); candSide = null;
-            candUp?.Release();   candUp = null;
-            biomeMask?.Release(); biomeMask = null;
             biomeBuffer?.Release(); biomeBuffer = null;
             terraformEditBuf?.Release(); terraformEditBuf = null;
+            combinedBuf?.Release(); combinedBuf = null;
+            triCountBuf?.Release(); triCountBuf = null;
+
+            if (genShader != null) Destroy(genShader);
+            if (packShader != null) Destroy(packShader);
         }
 
         try
         {
+            int kMain = genShader.FindKernel("TerrainGeneration");
+            int kPack = packShader.FindKernel("PackForReadback");
+
             int maxCells = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
             int maxTriangles = maxCells * 5;
-            if (maxTriangles == 0) { onComplete?.Invoke(null, 0); return; }
+            if (maxTriangles <= 0) { onComplete?.Invoke(null, 0, 0f); return; }
 
+            headerBuf = new ComputeBuffer(1, sizeof(uint) * 2, ComputeBufferType.Structured);
             triBuf = new ComputeBuffer(maxTriangles, TRIANGLE_STRIDE, ComputeBufferType.Append);
             triBuf.SetCounterValue(0);
 
+            int combinedBytes = HEADER_BYTES + maxTriangles * TRIANGLE_STRIDE;
+            combinedBuf = new ComputeBuffer(Mathf.CeilToInt(combinedBytes / 4f), 4, ComputeBufferType.Raw);
 
-
-            cs.SetBuffer(_kernelMain, "_GeneratedTriangles", triBuf);
-
-            biomeMask = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Structured);
-            uint[] zero = { 0 };
-            biomeMask.SetData(zero);
-            cs.SetBuffer(_kernelMain, "_BiomeMask", biomeMask);
-
-            Vector3 scale = settings.scale;
-            Vector3 dims  = settings.chunkDims;
-            Vector3 origin = position - new Vector3(scale.x * dims.x / 2f, scale.y * dims.y / 2f, scale.z * dims.z / 2f);
-
-            cs.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
-            cs.SetFloat("_IsoLevel", settings.isoLevel);
-            cs.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
-
-            cs.SetFloat("_WorleyNoiseScale", settings.noiseScale);
-            cs.SetFloat("_WorleyVerticalScale", settings.verticalScale);
-            cs.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
-            cs.SetInt("_WorleySeed", settings.seed == 0 ? Random.Range(0, 1000000) : (int)settings.seed);
-
-            cs.SetFloat("_DisplacementStrength", settings.displacementStrength);
-            cs.SetFloat("_DisplacementScale", settings.displacementScale);
-            cs.SetInt("_Octaves", settings.octaves);
-            cs.SetFloat("_Lacunarity", settings.lacunarity);
-            cs.SetFloat("_Persistence", settings.persistence);
-
-            cs.SetFloat("_BiomeScale", settings.biomeScale);
-            cs.SetFloat("_BiomeBorder", settings.biomeBorder);
-            cs.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
-            cs.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
-
+            // biome offsets
             float[] biomeOffsets = new float[settings.biomeSettings.Length];
             for (int i = 0; i < settings.biomeSettings.Length; i++)
-            {
                 biomeOffsets[i] = settings.biomeSettings[i].densityOffset;
-            }
-            
-            biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float));
-            biomeBuffer.SetData(biomeOffsets);
-            cs.SetBuffer(_kernelMain, "_BiomeDensityOffsets", biomeBuffer);
 
-            if (terraformEdits.Count > 0)
+            biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float), ComputeBufferType.Structured);
+            biomeBuffer.SetData(biomeOffsets);
+
+            // terraform edits
+            if (terraformEdits != null && terraformEdits.Count > 0)
             {
                 terraformEditBuf = new ComputeBuffer(terraformEdits.Count, TERRAFORM_EDIT_STRIDE, ComputeBufferType.Structured);
                 terraformEditBuf.SetData(terraformEdits);
-                cs.SetBuffer(_kernelMain, "_TerraformEdits", terraformEditBuf);
             }
             else
             {
                 terraformEditBuf = new ComputeBuffer(1, TERRAFORM_EDIT_STRIDE, ComputeBufferType.Structured);
-                terraformEditBuf.SetData(new TerraformEdit[] { new TerraformEdit { position = Vector3.zero, strength = 0.0f, radius = 0.0f } });
-                cs.SetBuffer(_kernelMain, "_TerraformEdits", terraformEditBuf);
+                terraformEditBuf.SetData(new TerraformEdit[] { new TerraformEdit { position = Vector3.zero, strength = 0f, radius = 0f } });
             }
-            cs.SetInt("_TerraformEditsCount", terraformEdits.Count);
 
+            // bind all
+            genShader.SetBuffer(kMain, "_Header", headerBuf);
+            genShader.SetBuffer(kMain, "_GeneratedTriangles", triBuf);
+            genShader.SetBuffer(kMain, "_BiomeDensityOffsets", biomeBuffer);
+            genShader.SetBuffer(kMain, "_TerraformEdits", terraformEditBuf);
+            genShader.SetInt("_TerraformEditsCount", terraformEdits?.Count ?? 0);
 
+            // params
+            Vector3 scale = settings.scale;
+            Vector3 dims = settings.chunkDims;
+            Vector3 origin = position - new Vector3(scale.x * dims.x / 2f, scale.y * dims.y / 2f, scale.z * dims.z / 2f);
 
-            cs.GetKernelThreadGroupSizes(_kernelMain, out uint tgX, out uint tgY, out uint tgZ);
-            int dx = Mathf.CeilToInt((float)settings.chunkDims.x / tgX);
-            int dy = Mathf.CeilToInt((float)settings.chunkDims.y / tgY);
-            int dz = Mathf.CeilToInt((float)settings.chunkDims.z / tgZ);
-            cs.Dispatch(_kernelMain, dx, dy, dz);
+            genShader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
+            genShader.SetFloat("_IsoLevel", settings.isoLevel);
+            genShader.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
 
-            cntBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
-            ComputeBuffer.CopyCount(triBuf, cntBuf, 0);
+            genShader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
+            genShader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
+            genShader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
+            genShader.SetInt("_WorleySeed", settings.seed == 0 ? UnityEngine.Random.Range(0, 1_000_000) : (int)settings.seed);
 
+            genShader.SetFloat("_DisplacementStrength", settings.displacementStrength);
+            genShader.SetFloat("_DisplacementScale", settings.displacementScale);
+            genShader.SetInt("_Octaves", settings.octaves);
+            genShader.SetFloat("_Lacunarity", settings.lacunarity);
+            genShader.SetFloat("_Persistence", settings.persistence);
 
-            AsyncGPUReadback.Request(cntBuf, reqCount =>
+            genShader.SetFloat("_BiomeScale", settings.biomeScale);
+            genShader.SetFloat("_BiomeBorder", settings.biomeBorder);
+            genShader.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
+            genShader.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
+
+            // dispatch terrain
+            genShader.GetKernelThreadGroupSizes(kMain, out uint tgX, out uint tgY, out uint tgZ);
+            int dx = Mathf.CeilToInt(settings.chunkDims.x / (float)tgX);
+            int dy = Mathf.CeilToInt(settings.chunkDims.y / (float)tgY);
+            int dz = Mathf.CeilToInt(settings.chunkDims.z / (float)tgZ);
+            genShader.Dispatch(kMain, dx, dy, dz);
+
+            // authoritative count from append buffer
+            triCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+            ComputeBuffer.CopyCount(triBuf, triCountBuf, 0);
+
+            // pack kernel
+            packShader.SetBuffer(kPack, "_Header", headerBuf);
+            packShader.SetBuffer(kPack, "_GeneratedTriangles", triBuf);
+            packShader.SetBuffer(kPack, "_Combined", combinedBuf);
+            packShader.SetBuffer(kPack, "_TriCountRaw", triCountBuf);
+            packShader.SetInt("_TriangleStrideBytes", TRIANGLE_STRIDE);
+            packShader.SetInt("_HeaderBytes", HEADER_BYTES);
+            packShader.SetInt("_MaxTriangles", maxTriangles);
+
+            packShader.GetKernelThreadGroupSizes(kPack, out uint px, out _, out _);
+            int groups = Mathf.CeilToInt(maxTriangles / (float)px);
+            packShader.Dispatch(kPack, Mathf.Max(1, groups), 1, 1);
+
+            // single readback
+            AsyncGPUReadback.Request(combinedBuf, req =>
             {
                 try
                 {
-                    if (reqCount.hasError)
+                    float elapsed = (Time.realtimeSinceStartup - startTime) * 1000f;
+
+                    if (req.hasError)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null, 0);
+                        onComplete?.Invoke(null, 0, elapsed);
                         return;
                     }
 
-                    uint triCount = reqCount.GetData<uint>()[0];
+                    var raw = req.GetData<byte>();
+                    uint triCount = BitConverter.ToUInt32(raw.Slice(0, 4).ToArray(), 0);
+                    uint biomeMask = BitConverter.ToUInt32(raw.Slice(4, 4).ToArray(), 0);
+
                     if (triCount == 0)
                     {
                         ReleaseAll();
-                        onComplete?.Invoke(null, 0);
+                        onComplete?.Invoke(null, biomeMask, elapsed);
                         return;
                     }
 
-                    int bytes = (int)triCount * TRIANGLE_STRIDE;
+                    int triBytes = (int)triCount * TRIANGLE_STRIDE;
+                    int triOffset = HEADER_BYTES;
+                    var triBytesArray = new NativeArray<byte>(triBytes, Allocator.Temp);
+                    for (int i = 0; i < triBytes; i++)
+                        triBytesArray[i] = raw[triOffset + i];
 
-                    AsyncGPUReadback.Request(triBuf, bytes, 0, reqTris =>
-                    {
-                        try
-                        {
-                            if (reqTris.hasError)
-                            {
-                                ReleaseAll();
-                                onComplete?.Invoke(null, 0);
-                                return;
-                            }
+                    var triNative = triBytesArray.Reinterpret<MCTriangle>(1);
+                    var mesh = ComposeMesh(triNative);
+                    triBytesArray.Dispose();
 
-                            var tris = reqTris.GetData<MCTriangle>();
-                            var mesh = ComposeMesh(tris);
-
-                            AsyncGPUReadback.Request(biomeMask, reqBiome =>
-                            {
-                                try
-                                {
-                                    if (reqBiome.hasError)
-                                    {
-                                        ReleaseAll();
-                                        onComplete?.Invoke(mesh, 0);
-                                        return;
-                                    }
-
-                                    uint mask = reqBiome.GetData<uint>()[0];
-                                    float elapsed = Time.realtimeSinceStartup - startTime;
-                                    // Debug.Log($"MCBaker.RunAsync completed in {elapsed * 1000f:F1} ms  |  Triangles: {triCount}, position: {position}");
-                                    onComplete?.Invoke(mesh, mask);
-                                    
-                                }
-                                finally
-                                {
-                                    ReleaseAll();
-                                }
-                            });
-                        }
-                        finally
-                        {
-                            ReleaseAll();
-                        }
-                    });
+                    // Debug.Log("Readback request completed in " + elapsed.ToString("F2") + " milliseconds");
+                    onComplete?.Invoke(mesh, biomeMask, elapsed);
                 }
-                catch
+                finally
                 {
                     ReleaseAll();
-                    onComplete?.Invoke(null, 0);
                 }
             });
         }
         catch
         {
             ReleaseAll();
-            onComplete?.Invoke(null, 0);
+            onComplete?.Invoke(null, 0, 0f);
         }
     }
+
+
+
 
     private Vector3[] _verts;
     private int[] _indices;

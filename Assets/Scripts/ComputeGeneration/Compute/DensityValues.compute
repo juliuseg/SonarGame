@@ -7,7 +7,7 @@ float4x4 _Transform;
 
 RWStructuredBuffer<float> GeneratedDensity;
 
-int3 _ChunkDims;
+uint3 _ChunkDims;
 
 // Iso Level to match Marching Cubes
 float _IsoLevel;
@@ -56,11 +56,11 @@ void Main(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= _ChunkDims.x || id.y >= _ChunkDims.y || id.z >= _ChunkDims.z) return;
 
-    int index = id.z + id.y * _ChunkDims.z + id.x * _ChunkDims.z * _ChunkDims.y;
+    uint index = id.z + id.y * _ChunkDims.z + id.x * _ChunkDims.z * _ChunkDims.y;
 
 
 
-    int3 cell = int3(id);
+    uint3 cell = int3(id);
     float3 p = (float3)(cell);
     p = TransformPoint(p);
     bool terrainEdit = false;

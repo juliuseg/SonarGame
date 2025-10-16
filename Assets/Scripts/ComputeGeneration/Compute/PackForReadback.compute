@@ -1,0 +1,52 @@
+#pragma kernel PackForReadback
+
+struct MCTriangle {
+    float3 positionWS0;
+    float3 positionWS1;
+    float3 positionWS2;
+    float3 colorWS;
+};
+
+RWStructuredBuffer<uint2> _Header;
+StructuredBuffer<MCTriangle> _GeneratedTriangles;
+RWByteAddressBuffer _Combined;
+
+int _TriangleStrideBytes;
+int _HeaderBytes;
+int _MaxTriangles;
+
+ByteAddressBuffer _TriCountRaw;
+
+uint GetTriCount()
+{
+    return _TriCountRaw.Load(0);
+}
+
+[numthreads(128,1,1)]
+void PackForReadback(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x == 0)
+    {
+        uint triCountHdr = GetTriCount();          // use real count
+        uint biomeMask   = _Header[0].y;
+        _Combined.Store(0,  triCountHdr);
+        _Combined.Store(4,  biomeMask);
+        _Combined.Store(8,  0);
+        _Combined.Store(12, 0);
+    }
+
+    uint triCount = GetTriCount();                 // use real count
+    uint idx = id.x;
+    if (idx >= triCount) return;
+
+    uint dst = _HeaderBytes + idx * _TriangleStrideBytes;
+    MCTriangle t = _GeneratedTriangles[idx];
+
+    float4 g0 = float4(t.positionWS0.xyz, t.positionWS1.x);
+    float4 g1 = float4(t.positionWS1.y, t.positionWS1.z, t.positionWS2.x, t.positionWS2.y);
+    float4 g2 = float4(t.positionWS2.z, t.colorWS.x, t.colorWS.y, t.colorWS.z);
+
+    _Combined.Store4(dst +  0, asuint(g0));
+    _Combined.Store4(dst + 16, asuint(g1));
+    _Combined.Store4(dst + 32, asuint(g2));
+}

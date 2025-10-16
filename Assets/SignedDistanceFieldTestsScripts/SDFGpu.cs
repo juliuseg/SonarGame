@@ -116,7 +116,7 @@ public sealed class SDFGpu : IDisposable
 
         // 3) SDF combine (trim halos)
         edtShader.SetInts("_ChunkDims", core.x, core.y, core.z);
-        edtShader.SetInt("_Halo", h);
+        edtShader.SetInts("_Halo", h);
         edtShader.SetBuffer(kSDF, "EDTIn",  edtInBuf);
         edtShader.SetBuffer(kSDF, "EDTOut", edtOutBuf);
         edtShader.SetBuffer(kSDF, "SDFHalos", sdfBuf);
