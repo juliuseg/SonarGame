@@ -23,6 +23,7 @@ public class Bootstrap : MonoBehaviour
     [SerializeField] private SDFGradientMover sdfGradientMover;
     [SerializeField] private RandomSteeredMover randomSteeredMover;
     [SerializeField] private ChunkSDFVisualizer sdfVisualizer;
+    [SerializeField] private TerraformController terraformController;
     
     
     private ChunkStreamer _chunkStreamer;
@@ -51,6 +52,7 @@ public class Bootstrap : MonoBehaviour
         if (sdfGradientMover != null) sdfGradientMover.Init(chunkManager);
         if (randomSteeredMover != null) randomSteeredMover.Init(chunkManager);
         if (sdfVisualizer != null) sdfVisualizer.Init(chunkManager, mcSettings);
+        if (terraformController != null) terraformController.Init(_chunkStreamer);
     }
 
     void Update()
