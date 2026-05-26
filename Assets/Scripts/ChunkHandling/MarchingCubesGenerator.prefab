@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &158361632268675231
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4393061782156441770}
+  - component: {fileID: 7875504794590251432}
+  - component: {fileID: 7289028735568057172}
+  m_Layer: 0
+  m_Name: MarchingCubesGenerator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4393061782156441770
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7875504794590251432
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66284dc618e94a68a707a0f2d14bbc30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Bootstrap
+  chunkSettings: {fileID: 11400000, guid: f680756a4cbe14267beec9326fefcaa3, type: 2}
+  mcSettings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
+  densityShader: {fileID: 7200000, guid: ad6f752c1017f45a0a23d5639214f403, type: 3}
+  edtShader: {fileID: 7200000, guid: 15a5535528618463d9e6e9a2bc9b657c, type: 3}
+  terrainShader: {fileID: 7200000, guid: fbf175ce4324749338eb1bd405efbe5e, type: 3}
+  packShader: {fileID: 7200000, guid: 5e8c78c18366e4b8f8ee0064d2c39116, type: 3}
+  chunkLoaderTarget: {fileID: 0}
+  chunkParent: {fileID: 4393061782156441770}
+  instancingMeshCoral: {fileID: 11400000, guid: 2c2121c59bf95427797512fa87fb1af9, type: 2}
+  instancingMeshRock: {fileID: 11400000, guid: 31a6a47f6f07f41e896dd84fd0533368, type: 2}
+  terrainMaterial: {fileID: 2100000, guid: d7051d23e55154a599201a08396b0f2a, type: 2}
+  sdfGradientMover: {fileID: 0}
+  randomSteeredMover: {fileID: 0}
+--- !u!114 &7289028735568057172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eff3afd883add46e8ab7890a6ead6d10, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
+  debugChunkCoord: {x: 0, y: 0, z: 0}
+  colorMultiplier: 1
