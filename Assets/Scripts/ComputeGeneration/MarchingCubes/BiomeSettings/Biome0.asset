@@ -13,3 +13,5 @@ MonoBehaviour:
   m_Name: Biome0
   m_EditorClassIdentifier: Assembly-CSharp::BiomeSettings
   densityOffset: 0
+  instancingMeshes:
+  - {fileID: 11400000, guid: 2c2121c59bf95427797512fa87fb1af9, type: 2}

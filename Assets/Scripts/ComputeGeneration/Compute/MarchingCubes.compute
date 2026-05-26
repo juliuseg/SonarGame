@@ -75,17 +75,17 @@ void AppendTriangle(float3 pos, float3 pos1, float3 pos2, bool terrainEditAll)
 }
 
 
-// shared caches
-groupshared float gDensity[9][9][9];
-groupshared uint  gEditMask[9][9][9];
+// shared caches for a 4x4x4 cell block (+1 corner border = 5)
+groupshared float gDensity[5][5][5];
+groupshared uint  gEditMask[5][5][5];
 
-[numthreads(8,8,8)]
+[numthreads(4,4,4)]
 void TerrainGeneration(uint3 id : SV_DispatchThreadID,
                        uint3 gid : SV_GroupID,
                        uint3 tid : SV_GroupThreadID)
 {
     bool active = (id.x < _ChunkDims.x && id.y < _ChunkDims.y && id.z < _ChunkDims.z);
-    const uint3 base = gid * 8u;
+    const uint3 base = gid * 4u;
 
     // reset header (only once)
     if (all(id == 0))
@@ -95,13 +95,13 @@ void TerrainGeneration(uint3 id : SV_DispatchThreadID,
     GroupMemoryBarrierWithGroupSync();
 
     // Phase 1: compute corner densities
-    uint lidx = tid.x + tid.y * 8u + tid.z * 64u;
-    for (uint i = lidx; i < 729u; i += 512u)
+    uint lidx = tid.x + tid.y * 4u + tid.z * 16u;
+    for (uint iLoad = lidx; iLoad < 125u; iLoad += 64u)
     {
-        uint z = i / 81u;
-        uint rem = i - z * 81u;
-        uint y = rem / 9u;
-        uint x = rem - y * 9u;
+        uint z = iLoad / 25u;
+        uint rem = iLoad - z * 25u;
+        uint y = rem / 5u;
+        uint x = rem - y * 5u;
 
         uint3 cornerCell = base + uint3(x, y, z);
         bool inBounds = (cornerCell.x <= _ChunkDims.x) &
@@ -131,21 +131,21 @@ void TerrainGeneration(uint3 id : SV_DispatchThreadID,
     bool  terrainEditAll = false;
 
     [unroll]
-    for (int i = 0; i < 8; i++)
+    for (int cornerIdx = 0; cornerIdx < 8; cornerIdx++)
     {
-        int3 off = cornerOffsets[i];
+        int3 off = cornerOffsets[cornerIdx];
         uint lx = tid.x + off.x;
         uint ly = tid.y + off.y;
         uint lz = tid.z + off.z;
 
-        cornerValues[i] = gDensity[lx][ly][lz];
+        cornerValues[cornerIdx] = gDensity[lx][ly][lz];
         terrainEditAll = terrainEditAll || (gEditMask[lx][ly][lz] != 0u);
     }
 
     int cubeIndex = 0;
     [unroll]
-    for (int i = 0; i < 8; i++)
-        cubeIndex |= (cornerValues[i] < _IsoLevel) ? (1 << i) : 0;
+    for (int bitIdx = 0; bitIdx < 8; bitIdx++)
+        cubeIndex |= (cornerValues[bitIdx] < _IsoLevel) ? (1 << bitIdx) : 0;
 
     int edgeMask = edges[cubeIndex];
     if (edgeMask == 0) return;
@@ -154,8 +154,8 @@ void TerrainGeneration(uint3 id : SV_DispatchThreadID,
     float3 cornerPosGrid[8];
 
     [unroll]
-    for (int i = 0; i < 8; i++)
-        cornerPosGrid[i] = (float3)(base + tid + cornerOffsets[i]);
+    for (int posIdx = 0; posIdx < 8; posIdx++)
+        cornerPosGrid[posIdx] = (float3)(base + tid + cornerOffsets[posIdx]);
 
     [unroll]
     for (int e = 0; e < 12; e++)

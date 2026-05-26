@@ -93,7 +93,10 @@ public sealed class SDFGpu : IDisposable
         densityShader.SetBuffer(kDensity, "_TerraformEdits", terraformEditBuf);
         densityShader.SetInt("_TerraformEditsCount", 0);
 
-        float[] biomeOffsets = { 0.0f, -0.2f, -0.31f };
+        int n = (settings.biomeSettings != null && settings.biomeSettings.Length > 0) ? settings.biomeSettings.Length : 1;
+        float[] biomeOffsets = new float[n];
+        for (int i = 0; i < n; i++)
+            biomeOffsets[i] = (settings.biomeSettings != null && i < settings.biomeSettings.Length) ? settings.biomeSettings[i].densityOffset : 0f;
         ComputeBuffer biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float));
         biomeBuffer.SetData(biomeOffsets);
         densityShader.SetBuffer(kDensity, "_BiomeDensityOffsets", biomeBuffer);
@@ -175,7 +178,6 @@ public sealed class SDFGpu : IDisposable
 
                 float elapsed = Time.realtimeSinceStartup - startTime;
                 // Debug.Log($"SDFGpu.GenerateAsync completed in {elapsed * 1000f:F1} ms  |  position: {position}");
-
                 
                 onComplete?.Invoke(data, sdfBuf, userState);
             }

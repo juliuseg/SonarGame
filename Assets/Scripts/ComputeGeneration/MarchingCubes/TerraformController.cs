@@ -9,7 +9,7 @@ public class TerraformController : MonoBehaviour
     public float maxRayDistance = 1000f;
 
     [SerializeField] 
-    private ChunkLoader chunkLoader;
+    private ChunkStreamer _chunkStreamer;
 
     public float terraformStrenght = 1.0f;
     public float terraformRadius = 1.0f;
@@ -60,7 +60,7 @@ public class TerraformController : MonoBehaviour
     void MouseClick(RaycastHit hit, float multiplier)
     {
 
-        chunkLoader.ApplyTerraformEdit(new TerraformEdit {
+        _chunkStreamer.ApplyTerraformEdit(new TerraformEdit {
             position = hit.point,
             strength = terraformStrenght * multiplier,
             radius = terraformRadius

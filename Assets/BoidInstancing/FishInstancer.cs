@@ -9,6 +9,7 @@ public class FishInstancer : MonoBehaviour
     [SerializeField] private float[] phases;             // same length as instanceCount
     [SerializeField] private string phaseProperty = "_Phase";
     [SerializeField] private float spacing = 1f;
+    [SerializeField] private float scale = 1f;
     private Matrix4x4[] matrices;
     private MaterialPropertyBlock propertyBlock;
 
@@ -41,7 +42,7 @@ public class FishInstancer : MonoBehaviour
             Vector3 randomEuler = Random.onUnitSphere;
             randomEuler = randomEuler.normalized * 360f; // Each component [-360,360] (not strictly Euler, but gives variety)
             Quaternion randomRotation = Quaternion.Euler(randomEuler);
-            matrices[i] = Matrix4x4.TRS(pos, randomRotation, Vector3.one);
+            matrices[i] = Matrix4x4.TRS(pos, randomRotation, Vector3.one * scale);
         }
 
         propertyBlock = new MaterialPropertyBlock();

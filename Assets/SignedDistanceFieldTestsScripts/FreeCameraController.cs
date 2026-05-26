@@ -16,10 +16,13 @@ public class FreeCameraController : MonoBehaviour
     public int targetFrameRate = 60;
     public int vSyncCount = 1;
 
+    public Light moveFreeLight;
+
     private Vector2 lookInput;
     private Vector2 moveInput;
     private float rotationX;
     private float rotationY;
+    
 
     void Start()
     {
@@ -32,6 +35,12 @@ public class FreeCameraController : MonoBehaviour
 
         Application.targetFrameRate = targetFrameRate;
         QualitySettings.vSyncCount = vSyncCount;
+    }
+
+    public void resetRots (){
+        rotationX = transform.rotation.eulerAngles.y;
+        rotationY = 0;
+        
     }
 
     void Update()
@@ -65,5 +74,15 @@ public class FreeCameraController : MonoBehaviour
             currentSpeed *= sprintMultiplier;
 
         transform.position += direction * currentSpeed * Time.deltaTime;
+    }
+
+    void OnEnable()
+    {
+        moveFreeLight.enabled = true;
+    }
+
+    void OnDisable()
+    {
+        moveFreeLight.enabled = false;
     }
 }

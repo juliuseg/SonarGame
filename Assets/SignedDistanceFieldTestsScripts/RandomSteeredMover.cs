@@ -27,15 +27,23 @@ public class RandomSteeredMover : MonoBehaviour
     public float avoidanceStrength = 0.8f;
 
     [Header("SDF")]
-    public ChunkLoader chunkLoader;
-
+    private ChunkManager _chunkManager;
 
     [Header("Target Seeking")]
     public Transform target;
+    public GameObject bulletPrefab;
+    public float range = 5;
+    public int magazineSize = 5;
+    public float reloadInterval = 1f;
     public float targetBiasStrength = 0.3f;
+    [Tooltip("Treat target as wall: steer away when within avoidance radius.")]
+    public bool avoidTarget;
+    public float targetAvoidanceRadius = 1.0f;
+    [Tooltip("When first avoiding target, idle for this many seconds and ignore target.")]
+    public float idleDuration = 2f;
 
     [Header("Initial State")]
-    public int seed = 12345;
+    public int seed = 0;
     private Vector3 initialDirection;
 
     // internal
@@ -43,18 +51,28 @@ public class RandomSteeredMover : MonoBehaviour
     private Vector3 _biasDir;
     private float _nextJitterT;
     private System.Random _rng;
+    public bool idleing;
+    private float _idleCountdown;
+    private bool _wasInTargetAvoidanceRange;
+    private int _ammo;
+    private float _nextReloadTime;
 
-    void Awake()
+    public void Init(ChunkManager chunkManager)
     {
+        _chunkManager = chunkManager;
+        
+        if (seed == 0) {
+            seed = UnityEngine.Random.Range(0, 1_000_000);
+        }
         _rng = new System.Random(seed);
     }
 
     void Start()
     {
         // build the SDF brick using MCSettings
-        if (chunkLoader == null)
+        if (_chunkManager == null)
         {
-            Debug.LogError("ChunkLoader not found");
+            Debug.LogError("Chunkmanager not found");
             return;
         }
 
@@ -62,23 +80,32 @@ public class RandomSteeredMover : MonoBehaviour
         _dir = initialDirection.sqrMagnitude > 1e-6f ? initialDirection.normalized : Vector3.forward;
         _biasDir = RandomUnitVector();
         _nextJitterT = Time.time + (jitterHz > 0f ? 1f / jitterHz : 999f);
+        _ammo = magazineSize;
+        _nextReloadTime = Time.time + reloadInterval;
     }
 
     void Update()
     {
         float dt = Time.deltaTime;
 
+        Transform effectiveTarget = (idleing || target == null) ? null : target;
+        if (idleing)
+        {
+            _idleCountdown -= dt;
+            if (_idleCountdown <= 0f) idleing = false;
+        }
+
         // --- random steering ---
         if (Time.time >= _nextJitterT)
         {
-            if (target == null)
+            if (effectiveTarget == null)
             {
                 _biasDir = RandomUnitVector();
             }
             else
             {
                 Vector3 rnd = RandomUnitVector();
-                Vector3 toTarget = target.position - transform.position;
+                Vector3 toTarget = effectiveTarget.position - transform.position;
                 Vector3 seek = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : Vector3.zero;
                 Vector3 combined = targetBiasStrength * seek + rnd * Mathf.Min(4f, toTarget.magnitude / 10f);
                 _biasDir = combined.sqrMagnitude > 1e-6f ? combined.normalized : rnd;
@@ -91,16 +118,52 @@ public class RandomSteeredMover : MonoBehaviour
         Vector3 avoidBias = Vector3.zero;
         Vector3 gradient = Vector3.zero;
         float sdfValue = float.MaxValue;
-        bool hasSdf = chunkLoader.chunkManager.TryGetSDFValue(transform.position, out sdfValue);
+        bool hasSdf = _chunkManager.TryGetSDFValue(transform.position, out sdfValue);
+        // if (hasSdf) {
+        //     Debug.Log($"SDF Value {sdfValue}");
+        // }
 
         if (hasSdf && sdfValue < avoidanceRadius)
         {
-            if (chunkLoader.chunkManager.TrySampleSDFGradient(transform.position, out gradient))
+            if (_chunkManager.TrySampleSDFGradient(transform.position, out gradient))
             {
                 float t = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
                 float biasStrength = Mathf.Pow(t, 0.7f);
                 avoidBias = gradient.normalized * avoidanceStrength * biasStrength;
             }
+        }
+
+        // --- treat target as wall when avoidTarget ---
+        bool inTargetAvoidanceRange = target != null && avoidTarget && (target.position - transform.position).magnitude < targetAvoidanceRadius;
+        if (inTargetAvoidanceRange)
+        {
+            if (!idleing && !_wasInTargetAvoidanceRange)
+            {
+                idleing = true;
+                _idleCountdown = idleDuration;
+                _wasInTargetAvoidanceRange = true;
+            }
+            else
+            {
+                _wasInTargetAvoidanceRange = true;
+                Vector3 toTarget = target.position - transform.position;
+                float distToTarget = toTarget.magnitude;
+                if (distToTarget > 1e-6f)
+                {
+                    Vector3 awayFromTarget = -toTarget / distToTarget;
+                    float t = Mathf.Clamp01((targetAvoidanceRadius - distToTarget) / targetAvoidanceRadius);
+                    float biasStrength = Mathf.Pow(t, 0.7f);
+                    avoidBias += awayFromTarget * avoidanceStrength * biasStrength;
+
+                    gradient = awayFromTarget;
+                    sdfValue = Mathf.Min(sdfValue, distToTarget);
+                    hasSdf = true;
+                }
+            }
+        }
+        else if (!idleing)
+        {
+            _wasInTargetAvoidanceRange = false;
         }
 
         // --- desired heading base ---
@@ -145,6 +208,21 @@ public class RandomSteeredMover : MonoBehaviour
         if (sdfValue < 0)
         {
             // Debug.Log($"SDF Value {sdfValue}, avoidBias {avoidBias}, _dir {_dir}, speedMod {speed/currentSpeed}");
+        }
+
+        // --- reload ---
+        if (_ammo < magazineSize && Time.time >= _nextReloadTime)
+        {
+            _ammo++;
+            _nextReloadTime = Time.time + reloadInterval;
+        }
+
+        // --- raycast toward heading ---
+        if (_ammo > 0 && target != null && bulletPrefab != null && Physics.Raycast(transform.position, _dir, out RaycastHit hit, range) && hit.transform == target)
+        {
+            _ammo--;
+            var bullet = Instantiate(bulletPrefab, transform.position, Quaternion.identity);
+            if (bullet.TryGetComponent<EnemyBulletController>(out var bulletCont)) bulletCont.Shoot(_dir.normalized);
         }
 
         // --- move ---

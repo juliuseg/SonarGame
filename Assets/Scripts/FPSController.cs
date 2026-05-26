@@ -16,6 +16,8 @@ public class FPSController : MonoBehaviour
     private InputAction forwardAction;
     
     private Rigidbody rb;
+
+    [SerializeField] private CamSwitcher camSwitcher;
     
     void Awake()
     {
@@ -81,6 +83,7 @@ public class FPSController : MonoBehaviour
     
     void FixedUpdate()
     {
+        if (!camSwitcher.camFollow.enabled) return;
         if (rb == null) return;
         
         // Yaw rotation (A/D from Move action)
@@ -107,7 +110,9 @@ public class FPSController : MonoBehaviour
         // Forward movement (Space)
         if (Mathf.Abs(forwardInput) > 0.1f)
         {
-            rb.AddForce(forwardInput * moveForce * transform.forward, ForceMode.Force);
+            float spd_mult = 1;
+            if (Keyboard.current.mKey.isPressed) spd_mult = 10;
+            rb.AddForce(forwardInput * moveForce * spd_mult * transform.forward, ForceMode.Force);
         }
 
         transform.eulerAngles = new Vector3(transform.eulerAngles.x, transform.eulerAngles.y, 0);

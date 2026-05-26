@@ -5,20 +5,25 @@ using Unity.Collections;
 using System.Collections.Generic;
 using System;
 
-[RequireComponent(typeof(MeshFilter))]
-public class MCBaker : MonoBehaviour
+public class MCBaker
 {
-    [Header("Bake Settings")]
-    public ComputeShader terrainGenerationShader;
-    public ComputeShader packForReadbackShader;
-
-    public MCSettings settings;
+    private readonly ComputeShader _terrainGenerationShader;
+    private readonly ComputeShader _packForReadbackShader;
+    private readonly MCSettings _settings;
 
 
+    public MCBaker(ComputeShader terrainGenerationShader, ComputeShader packForReadbackShader, MCSettings settings)
+    {
+        _terrainGenerationShader = terrainGenerationShader;
+        _packForReadbackShader = packForReadbackShader;
+        _settings = settings;
+    }
+
+    
     
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct MCTriangle {
+    private struct MCTriangle { 
         public Vector3 position0;
         public Vector3 position1;
         public Vector3 position2;
@@ -33,16 +38,6 @@ public class MCBaker : MonoBehaviour
     private const int SPAWN_POINT_STRIDE = sizeof(float) * (3*3);
     private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
 
-    private int _kernelMain;
-    private int _kernelPack;
-
-
-
-    void Awake() {
-
-        _kernelMain = terrainGenerationShader.FindKernel("TerrainGeneration");
-        _kernelPack = packForReadbackShader.FindKernel("PackForReadback");
-    }
     
 
     public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint, List<SpawnPoint>, float> onComplete)
@@ -50,8 +45,8 @@ public class MCBaker : MonoBehaviour
         float startTime = Time.realtimeSinceStartup;
 
         // Per-job shader instances to prevent shared-state conflicts
-        var genShader = Instantiate(terrainGenerationShader);
-        var packShader = Instantiate(packForReadbackShader);
+        var genShader = UnityEngine.Object.Instantiate(_terrainGenerationShader);
+        var packShader = UnityEngine.Object.Instantiate(_packForReadbackShader);
 
         ComputeBuffer headerBuf = null;
         ComputeBuffer triBuf = null;
@@ -60,6 +55,7 @@ public class MCBaker : MonoBehaviour
         ComputeBuffer terraformEditBuf = null;
         ComputeBuffer combinedBuf = null;
         ComputeBuffer triCountBuf = null;
+        ComputeBuffer spawnCountBuf = null;
 
         const int HEADER_BYTES = 16;
 
@@ -72,9 +68,10 @@ public class MCBaker : MonoBehaviour
             terraformEditBuf?.Release(); terraformEditBuf = null;
             combinedBuf?.Release(); combinedBuf = null;
             triCountBuf?.Release(); triCountBuf = null;
+            spawnCountBuf?.Release(); spawnCountBuf = null;
 
-            if (genShader != null) Destroy(genShader);
-            if (packShader != null) Destroy(packShader);
+            if (genShader != null) UnityEngine.Object.Destroy(genShader);
+            if (packShader != null) UnityEngine.Object.Destroy(packShader);
         }
 
         try
@@ -82,7 +79,7 @@ public class MCBaker : MonoBehaviour
             int kMain = genShader.FindKernel("TerrainGeneration");
             int kPack = packShader.FindKernel("PackForReadback");
 
-            int maxCells = settings.chunkDims.x * settings.chunkDims.y * settings.chunkDims.z;
+            int maxCells = _settings.chunkDims.x * _settings.chunkDims.y * _settings.chunkDims.z;
             int maxTriangles = maxCells * 5;
             if (maxTriangles <= 0) { onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f); return; }
 
@@ -103,9 +100,9 @@ public class MCBaker : MonoBehaviour
             combinedBuf = new ComputeBuffer(Mathf.CeilToInt(combinedBytes / 4f), 4, ComputeBufferType.Raw);
             
             // Biome offsets
-            float[] biomeOffsets = new float[settings.biomeSettings.Length];
-            for (int i = 0; i < settings.biomeSettings.Length; i++)
-                biomeOffsets[i] = settings.biomeSettings[i].densityOffset;
+            float[] biomeOffsets = new float[_settings.biomeSettings.Length];
+            for (int i = 0; i < _settings.biomeSettings.Length; i++)
+                biomeOffsets[i] = _settings.biomeSettings[i].densityOffset;
 
             biomeBuffer = new ComputeBuffer(biomeOffsets.Length, sizeof(float), ComputeBufferType.Structured);
             biomeBuffer.SetData(biomeOffsets);
@@ -131,42 +128,42 @@ public class MCBaker : MonoBehaviour
             genShader.SetInt("_TerraformEditsCount", terraformEdits?.Count ?? 0);
 
             // params
-            Vector3 scale = settings.scale;
-            Vector3 dims = settings.chunkDims;
+            Vector3 scale = _settings.scale;
+            Vector3 dims = _settings.chunkDims;
             Vector3 origin = position - new Vector3(scale.x * dims.x / 2f, scale.y * dims.y / 2f, scale.z * dims.z / 2f);
 
             genShader.SetMatrix("_Transform", Matrix4x4.TRS(origin, Quaternion.identity, scale));
-            genShader.SetFloat("_IsoLevel", settings.isoLevel);
-            genShader.SetInts("_ChunkDims", settings.chunkDims.x, settings.chunkDims.y, settings.chunkDims.z);
+            genShader.SetFloat("_IsoLevel", _settings.isoLevel);
+            genShader.SetInts("_ChunkDims", _settings.chunkDims.x, _settings.chunkDims.y, _settings.chunkDims.z);
 
-            genShader.SetFloat("_WorleyNoiseScale", settings.noiseScale);
-            genShader.SetFloat("_WorleyVerticalScale", settings.verticalScale);
-            genShader.SetFloat("_WorleyCaveHeightFalloff", settings.caveHeightFalloff);
-            genShader.SetInt("_WorleySeed", settings.seed == 0 ? UnityEngine.Random.Range(0, 1_000_000) : (int)settings.seed);
+            genShader.SetFloat("_WorleyNoiseScale", _settings.noiseScale);
+            genShader.SetFloat("_WorleyVerticalScale", _settings.verticalScale);
+            genShader.SetFloat("_WorleyCaveHeightFalloff", _settings.caveHeightFalloff);
+            genShader.SetInt("_WorleySeed", _settings.seed == 0 ? UnityEngine.Random.Range(0, 1_000_000) : (int)_settings.seed);
 
-            genShader.SetFloat("_DisplacementStrength", settings.displacementStrength);
-            genShader.SetFloat("_DisplacementScale", settings.displacementScale);
-            genShader.SetInt("_Octaves", settings.octaves);
-            genShader.SetFloat("_Lacunarity", settings.lacunarity);
-            genShader.SetFloat("_Persistence", settings.persistence);
+            genShader.SetFloat("_DisplacementStrength", _settings.displacementStrength);
+            genShader.SetFloat("_DisplacementScale", _settings.displacementScale);
+            genShader.SetInt("_Octaves", _settings.octaves);
+            genShader.SetFloat("_Lacunarity", _settings.lacunarity);
+            genShader.SetFloat("_Persistence", _settings.persistence);
 
-            genShader.SetFloat("_BiomeScale", settings.biomeScale);
-            genShader.SetFloat("_BiomeBorder", settings.biomeBorder);
-            genShader.SetFloat("_BiomeDisplacementStrength", settings.biomeDisplacementStrength);
-            genShader.SetFloat("_BiomeDisplacementScale", settings.biomeDisplacementScale);
+            genShader.SetFloat("_BiomeScale", _settings.biomeScale);
+            genShader.SetFloat("_BiomeBorder", _settings.biomeBorder);
+            genShader.SetFloat("_BiomeDisplacementStrength", _settings.biomeDisplacementStrength);
+            genShader.SetFloat("_BiomeDisplacementScale", _settings.biomeDisplacementScale);
 
             // dispatch terrain
             genShader.GetKernelThreadGroupSizes(kMain, out uint tgX, out uint tgY, out uint tgZ);
-            int dx = Mathf.CeilToInt(settings.chunkDims.x / (float)tgX);
-            int dy = Mathf.CeilToInt(settings.chunkDims.y / (float)tgY);
-            int dz = Mathf.CeilToInt(settings.chunkDims.z / (float)tgZ);
+            int dx = Mathf.CeilToInt(_settings.chunkDims.x / (float)tgX);
+            int dy = Mathf.CeilToInt(_settings.chunkDims.y / (float)tgY);
+            int dz = Mathf.CeilToInt(_settings.chunkDims.z / (float)tgZ);
             genShader.Dispatch(kMain, dx, dy, dz);
 
             // authoritative count from append buffer
             triCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(triBuf, triCountBuf, 0);
 
-            var spawnCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+            spawnCountBuf = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
             ComputeBuffer.CopyCount(spawnPointsBuf, spawnCountBuf, 0);
 
 
@@ -216,9 +213,9 @@ public class MCBaker : MonoBehaviour
                     // Triangles
                     int triBytes = (int)triCount * TRIANGLE_STRIDE;
                     int triOffset = HEADER_BYTES;
+                    
                     var triBytesArray = new NativeArray<byte>(triBytes, Allocator.Temp);
-                    for (int i = 0; i < triBytes; i++)
-                        triBytesArray[i] = raw[triOffset + i];
+                    NativeArray<byte>.Copy(raw, triOffset, triBytesArray, 0, triBytes);
                     
 
                     var triNative = triBytesArray.Reinterpret<MCTriangle>(1);
@@ -230,8 +227,8 @@ public class MCBaker : MonoBehaviour
                     int spawnBytes  = (int)spawnCount * SPAWN_POINT_STRIDE;
 
                     var spawnBytesArray = new NativeArray<byte>(spawnBytes, Allocator.Temp);
-                    for (int i = 0; i < spawnBytes; i++)
-                        spawnBytesArray[i] = raw[spawnOffset + i];
+                    NativeArray<byte>.Copy(raw, spawnOffset, spawnBytesArray, 0, spawnBytes);
+                    
 
                     var spawnNative = spawnBytesArray.Reinterpret<SpawnPoint>(1);
                     var spawnPoints = new List<SpawnPoint>(spawnNative.Length);

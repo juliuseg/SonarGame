@@ -1,98 +1,56 @@
 using UnityEngine;
 
 public class TailController : MonoBehaviour
+
 {
-	public GameObject tailPrefab;
-	public float[] segmentSizes;
-	public float segmentLength = 0.5f; // distance between consecutive nodes
+    [Header("Setup")]
+    public Transform leader;
+    public GameObject segmentPrefab;
 
-	private Transform[] segments;
-	private int builtCount = 0;
+    [Header("Settings")]
+    public int segmentCount = 10;
+    public float segmentDistance = 0.5f;
 
-	private void Start()
-	{
-		BuildSegments();
-	}
+    private Transform[] segments;
 
-	
+    void Start()
+    {
+        SpawnSegments();
+    }
 
-	private void BuildSegments()
-	{
-		ClearSegments();
-		segments = new Transform[segmentSizes.Length-1];
+    void SpawnSegments()
+    {
+        segments = new Transform[segmentCount];
 
-		Vector3 headPosition = transform.position;
-		Vector3 backDirection = -transform.forward;
-		if (backDirection.sqrMagnitude < 1e-6f) backDirection = Vector3.back;
+        for (int i = 0; i < segmentCount; i++)
+        {
+            GameObject seg = Instantiate(segmentPrefab, leader.position, Quaternion.identity);
+            seg.name = $"TailSegment_{i}";
+            segments[i] = seg.transform;
+        }
+    }
 
-        transform.localScale = new Vector3(segmentSizes[0], segmentSizes[0], segmentSizes[0]);
-		for (int i = 0; i < segmentSizes.Length-1; i++)
-		{
-			GameObject segmentObject = Instantiate(tailPrefab);
+    void LateUpdate()
+    {
+        // First segment follows the leader
+        ConstrainSegment(segments[0], leader);
 
-			segmentObject.name = $"TailSegment_{i}";
-			segmentObject.transform.SetParent(transform);
+        // Each subsequent segment follows the one before it
+        for (int i = 1; i < segments.Length; i++)
+        {
+            ConstrainSegment(segments[i], segments[i - 1]);
+        }
+    }
 
-			Vector3 initialPosition = headPosition + backDirection * ((i + 1) * segmentLength);
-			segmentObject.transform.position = initialPosition;
+    void ConstrainSegment(Transform segment, Transform target)
+    {
+        float dist = Vector3.Distance(segment.position, target.position);
 
-			segments[i] = segmentObject.transform;
-
-            // Scale the segment to the size of the segment
-            segmentObject.transform.localScale = new Vector3(segmentSizes[i+1], segmentSizes[i+1], segmentSizes[i+1]);
-		}
-
-		builtCount = segmentSizes.Length-1;
-	}
-
-	private void ClearSegments()
-	{
-		if (segments == null) return;
-		for (int i = 0; i < segments.Length; i++)
-		{
-			Transform t = segments[i];
-			if (t != null)
-			{
-				Destroy(t.gameObject);
-			}
-		}
-		segments = null;
-	}
-
-	private void Update()
-	{
-		if (segments == null || segments.Length != segmentSizes.Length-1)
-		{
-			BuildSegments();
-			if (segments == null) return;
-		}
-
-		Vector3 previousPosition = transform.position; // the head (this GameObject)
-		Vector3 fallbackDir = -transform.forward;
-		if (fallbackDir.sqrMagnitude < 1e-6f) fallbackDir = Vector3.back;
-
-		for (int i = 0; i < segments.Length; i++)
-		{
-			Vector3 current = segments[i].position;
-			Vector3 delta = current - previousPosition;
-			float distance = delta.magnitude;
-
-			if (distance <= 1e-6f)
-			{
-				// If overlapping, push directly behind the previous node
-				delta = fallbackDir;
-				distance = 1f;
-			}
-
-			Vector3 constrained = previousPosition + (delta / distance) * segmentLength;
-			segments[i].position = constrained;
-
-			previousPosition = constrained;
-		}
-	}
-
-	private void OnDestroy()
-	{
-		ClearSegments();
-	}
+        if (dist > segmentDistance)
+        {
+            // Pull the segment toward its target so it's exactly segmentDistance away
+            Vector3 direction = (segment.position - target.position).normalized;
+            segment.position = target.position + direction * segmentDistance;
+        }
+    }
 }
