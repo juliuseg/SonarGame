@@ -5,24 +5,24 @@ public class SpawnManager
 {
     private readonly ChunkManager _chunkManager;
     private readonly MCSettings _mcSettings;
-    private readonly ChunkSettings _chunkSettings;
+    private readonly ChunkStreamingSettings _chunkStreamingSettings;
     private readonly Transform _target;
 
     public SpawnManager(
         ChunkManager chunkManager,
         MCSettings mcSettings,
-        ChunkSettings chunkSettings,
+        ChunkStreamingSettings chunkStreamingSettings,
         Transform target)
     {
         _chunkManager = chunkManager;
         _mcSettings = mcSettings;
-        _chunkSettings = chunkSettings;
+        _chunkStreamingSettings = chunkStreamingSettings;
         _target = target;
     }
 
     public void Tick()
     {
-        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkSettings);
+        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
         List<SpawnPoint>[] allPoints = CollectSpawnPoints(radius * 0.5f);
         DistributeAndDraw(allPoints);
     }
@@ -89,12 +89,24 @@ public class SpawnManager
         {
             Vector3 pos = spawnPoints[i].positionWS;
             Vector3 normal = spawnPoints[i].normalWS;
+
+            if (normal.sqrMagnitude < 1e-6f)
+                normal = Vector3.up;
+            else
+                normal.Normalize();
+
             float scale = instancingMesh.scale + (ChunkMath.Hash(pos) * 2f - 1f) * instancingMesh.scaleOffset;
             scale = Mathf.Max(scale, 0.01f);
 
+            Vector3 alignedUp = Vector3.Slerp(normal, Vector3.up, instancingMesh.verticalBias).normalized;
+
+            Quaternion align = Quaternion.FromToRotation(Vector3.up, alignedUp);
+            float spin = ChunkMath.Hash(pos + Vector3.one * 0.37f) * 360f;
+            Quaternion rotation = Quaternion.AngleAxis(spin, alignedUp) * align;
+
             matrices[i] = Matrix4x4.TRS(
-                pos + (1 - normal.y) * instancingMesh.yOffset * Vector3.up,
-                Quaternion.Euler(0, 1f, 0),
+                pos + alignedUp * instancingMesh.yOffset,
+                rotation,
                 Vector3.one * scale
             );
         }

@@ -4,15 +4,15 @@ using System.Runtime.CompilerServices;
 
 public static class ChunkMath
 {
-    public static float GetDynamicRadius(Vector3 position, ChunkSettings settings)
+    public static float GetDynamicRadius(Vector3 position, ChunkStreamingSettings streamingSettings)
     {
         float y = position.y;
 
-        if (y >= settings.waterLevel) return settings.surfaceRadius;
-        if (y <= settings.deepLevel) return settings.deepRadius;
+        if (y >= streamingSettings.waterLevel) return streamingSettings.surfaceRadius;
+        if (y <= streamingSettings.deepLevel) return streamingSettings.deepRadius;
 
-        float t = Mathf.InverseLerp(settings.waterLevel, settings.deepLevel, y);
-        return Mathf.Lerp(settings.surfaceRadius, settings.deepRadius, t);
+        float t = Mathf.InverseLerp(streamingSettings.waterLevel, streamingSettings.deepLevel, y);
+        return Mathf.Lerp(streamingSettings.surfaceRadius, streamingSettings.deepRadius, t);
     }
 
     public static bool IsOutOfRange(Vector3 currentPos, Vector3 worldPos, float radius)

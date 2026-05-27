@@ -3,19 +3,40 @@ using System.Collections.Generic;
 
 public class Chunk {
     public GameObject gameObject;
-    public float[,,] sdfData;
-    public ComputeBuffer sdfBuffer;
-    public List<TerraformEdit> terraformEdits; // Idea: Store these as a dict, so we don't overload the list. Then make a function to extract the array from the dict. And a function to add to the dict and have it voxel based.
+    public float[] sdfData;
+    public Vector3Int sdfDims;
+    public List<TerraformEdit> terraformEdits;
     public List<SpawnPoint> spawnPoints;
+    public List<Vector3> interiorSpawnPositions;
     public uint biomeMask;
-    public Chunk(GameObject gameObject, float[,,] sdfData, List<SpawnPoint> spawnPoints, ComputeBuffer sdfBuffer, uint biomeMask)
+    public int sdfSlotIndex = -1;
+    
+    public Chunk(GameObject gameObject, float[] sdfData, List<SpawnPoint> spawnPoints, ComputeBuffer sdfBuffer, uint biomeMask)
     {
         this.gameObject = gameObject;
         this.sdfData = sdfData;
         this.spawnPoints = spawnPoints;
-        this.sdfBuffer = sdfBuffer;
         this.terraformEdits = new List<TerraformEdit>();
         this.biomeMask = biomeMask;
+    }
+
+    public bool HasSdfData => sdfData != null && sdfDims.x > 0 && sdfDims.y > 0 && sdfDims.z > 0;
+
+    public static int ToFlatIndex(int x, int y, int z, int sx, int sy, int sz) =>
+        z + y * sz + x * sz * sy;
+
+    public float GetVoxel(int x, int y, int z) =>
+        sdfData[ToFlatIndex(x, y, z, sdfDims.x, sdfDims.y, sdfDims.z)];
+
+    public bool TryGetVoxel(int x, int y, int z, out float value)
+    {
+        value = 0f;
+        if (!HasSdfData)
+            return false;
+        if (x < 0 || x >= sdfDims.x || y < 0 || y >= sdfDims.y || z < 0 || z >= sdfDims.z)
+            return false;
+        value = GetVoxel(x, y, z);
+        return true;
     }
 
     public List<int> GetBiomeMaskList()

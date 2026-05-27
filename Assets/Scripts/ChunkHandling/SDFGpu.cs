@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 
 public sealed class SDFGpu : IDisposable
@@ -19,7 +20,6 @@ public sealed class SDFGpu : IDisposable
     readonly uint tgSDFX, tgSDFY, tgSDFZ; // 64,1,1 expected
 
     private const int TERRAFORM_EDIT_STRIDE = sizeof(float) * 3 + sizeof(float) + sizeof(float);
-
 
     public SDFGpu(ComputeShader density, ComputeShader edt, MCSettings cfg)
     {
@@ -41,11 +41,18 @@ public sealed class SDFGpu : IDisposable
         edtShader.GetKernelThreadGroupSizes(kSDF,   out tgSDFX, out tgSDFY, out tgSDFZ);
     }
 
-    public void GenerateAsync(
+    public bool GenerateAsync(
         Vector3 position,
-        Action<float[,,], ComputeBuffer, object> onComplete,
-        object userState = null)
+        Action<float[], ComputeBuffer, object> onComplete,
+        object userState = null,
+        Func<bool> tryBeginReadback = null,
+        Action endReadback = null,
+        Action onReadbackQueued = null,
+        Func<bool> isBuildStillValid = null)
     {
+        if (tryBeginReadback != null && !tryBeginReadback())
+            return false;
+
         float startTime = Time.realtimeSinceStartup;        
         // dims
         Vector3Int core = settings.chunkDims;
@@ -128,20 +135,17 @@ public sealed class SDFGpu : IDisposable
             Mathf.CeilToInt(totalCore / (float)tgSDFX),
             1, 1);
 
-        // 4) async readback
-        // inside AsyncGPUReadback.Request(...)
+        void FreeTemps()
+        {
+            SafeRelease(densityBuf);
+            SafeRelease(edtOutBuf);
+            SafeRelease(edtInBuf);
+            SafeRelease(biomeBuffer);
+            SafeRelease(terraformEditBuf);
+        }
+
         AsyncGPUReadback.Request(sdfBuf, req =>
         {
-            // local helper to free temps once
-            void FreeTemps()
-            {
-                SafeRelease(densityBuf);
-                SafeRelease(edtOutBuf);
-                SafeRelease(edtInBuf);
-                SafeRelease(biomeBuffer);
-                SafeRelease(terraformEditBuf);
-            }
-
             try
             {
                 if (req.hasError)
@@ -152,7 +156,6 @@ public sealed class SDFGpu : IDisposable
                     return;
                 }
 
-                // if chunk was destroyed while GPU was working
                 if (onComplete == null)
                 {
                     FreeTemps();
@@ -160,25 +163,27 @@ public sealed class SDFGpu : IDisposable
                     return;
                 }
 
-                var arr = req.GetData<float>();
-                var core = settings.chunkDims;
-                var data = new float[core.x, core.y, core.z];
-
-                int sx = core.x, sy = core.y, sz = core.z;
-                for (int x = 0; x < sx; x++)
-                for (int y = 0; y < sy; y++)
-                for (int z = 0; z < sz; z++)
+                if (isBuildStillValid != null && !isBuildStillValid())
                 {
-                    int i = z + y * sz + x * sz * sy;
-                    data[x, y, z] = arr[i];
+                    FreeTemps();
+                    SafeRelease(sdfBuf);
+                    return;
                 }
 
-                // free temps before callback
-                FreeTemps();
+                float[] data;
+                Profiler.BeginSample("Chunk.SDF.Readback.Copy");
+                try
+                {
+                    var arr = req.GetData<float>();
+                    data = new float[arr.Length];
+                    arr.CopyTo(data);
+                }
+                finally
+                {
+                    Profiler.EndSample();
+                }
 
-                float elapsed = Time.realtimeSinceStartup - startTime;
-                // Debug.Log($"SDFGpu.GenerateAsync completed in {elapsed * 1000f:F1} ms  |  position: {position}");
-                
+                FreeTemps();
                 onComplete?.Invoke(data, sdfBuf, userState);
             }
             catch
@@ -187,8 +192,14 @@ public sealed class SDFGpu : IDisposable
                 SafeRelease(sdfBuf);
                 onComplete?.Invoke(null, null, userState);
             }
+            finally
+            {
+                endReadback?.Invoke();
+            }
         });
 
+        onReadbackQueued?.Invoke();
+        return true;
     }
 
     void RunEDT(ComputeBuffer densityBuf, ComputeBuffer outBuf, bool flip, Vector3Int halo)

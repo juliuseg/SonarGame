@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 using UnityEngine.InputSystem;
 using Unity.Collections;
@@ -10,7 +11,6 @@ public class MCBaker
     private readonly ComputeShader _terrainGenerationShader;
     private readonly ComputeShader _packForReadbackShader;
     private readonly MCSettings _settings;
-
 
     public MCBaker(ComputeShader terrainGenerationShader, ComputeShader packForReadbackShader, MCSettings settings)
     {
@@ -40,8 +40,21 @@ public class MCBaker
 
     
 
-    public void RunAsync(Vector3 position, List<TerraformEdit> terraformEdits, System.Action<Mesh, uint, List<SpawnPoint>, float> onComplete)
+    public bool RunAsync(
+        Vector3 position,
+        List<TerraformEdit> terraformEdits,
+        System.Action<Mesh, uint, List<SpawnPoint>, float> onComplete,
+        Func<bool> tryBeginReadback = null,
+        Action endReadback = null,
+        Action onReadbackQueued = null,
+        Func<bool> isBuildStillValid = null)
     {
+        if (tryBeginReadback != null && !tryBeginReadback())
+        {
+            onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f);
+            return false;
+        }
+
         float startTime = Time.realtimeSinceStartup;
 
         // Per-job shader instances to prevent shared-state conflicts
@@ -81,7 +94,12 @@ public class MCBaker
 
             int maxCells = _settings.chunkDims.x * _settings.chunkDims.y * _settings.chunkDims.z;
             int maxTriangles = maxCells * 5;
-            if (maxTriangles <= 0) { onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f); return; }
+            if (maxTriangles <= 0)
+            {
+                endReadback?.Invoke();
+                onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f);
+                return false;
+            }
 
             // Header buffer
             headerBuf = new ComputeBuffer(1, sizeof(uint) * 2, ComputeBufferType.Structured);
@@ -184,7 +202,6 @@ public class MCBaker
             int groups = Mathf.CeilToInt(maxTriangles / (float)px);
             packShader.Dispatch(kPack, Mathf.Max(1, groups), 1, 1);
 
-            // single readback
             AsyncGPUReadback.Request(combinedBuf, req =>
             {
                 try
@@ -193,71 +210,83 @@ public class MCBaker
 
                     if (req.hasError)
                     {
-                        ReleaseAll();
                         onComplete?.Invoke(null, 0, new List<SpawnPoint>(), elapsed);
                         return;
                     }
 
-                    var raw = req.GetData<byte>();
-                    uint triCount = BitConverter.ToUInt32(raw.Slice(0, 4).ToArray(), 0);
-                    uint biomeMask = BitConverter.ToUInt32(raw.Slice(4, 4).ToArray(), 0);
-                    uint spawnCount = BitConverter.ToUInt32(raw.Slice(8, 4).ToArray(), 0);
-
-                    
-                    if (triCount == 0)
-                    {
-                        ReleaseAll();
-                        onComplete?.Invoke(null, biomeMask, new List<SpawnPoint>(), elapsed);
+                    if (isBuildStillValid != null && !isBuildStillValid())
                         return;
+
+                    Mesh mesh = null;
+                    List<SpawnPoint> spawnPoints = null;
+                    uint biomeMask = 0;
+                    Profiler.BeginSample("Chunk.Mesh.Readback");
+                    try
+                    {
+                        var raw = req.GetData<byte>();
+                        uint triCount = ReadUInt32(raw, 0);
+                        biomeMask = ReadUInt32(raw, 4);
+                        uint spawnCount = ReadUInt32(raw, 8);
+
+                        if (triCount == 0)
+                        {
+                            onComplete?.Invoke(null, biomeMask, new List<SpawnPoint>(), elapsed);
+                            return;
+                        }
+
+                        int triBytes = (int)triCount * TRIANGLE_STRIDE;
+                        int triOffset = HEADER_BYTES;
+
+                        var triBytesArray = new NativeArray<byte>(triBytes, Allocator.Temp);
+                        NativeArray<byte>.Copy(raw, triOffset, triBytesArray, 0, triBytes);
+
+                        var triNative = triBytesArray.Reinterpret<MCTriangle>(1);
+                        mesh = ComposeMesh(triNative);
+                        triBytesArray.Dispose();
+
+                        int spawnOffset = HEADER_BYTES + (int)triCount * TRIANGLE_STRIDE;
+                        int spawnBytes = (int)spawnCount * SPAWN_POINT_STRIDE;
+
+                        var spawnBytesArray = new NativeArray<byte>(spawnBytes, Allocator.Temp);
+                        NativeArray<byte>.Copy(raw, spawnOffset, spawnBytesArray, 0, spawnBytes);
+
+                        var spawnNative = spawnBytesArray.Reinterpret<SpawnPoint>(1);
+                        spawnPoints = new List<SpawnPoint>(spawnNative.Length);
+                        for (int i = 0; i < spawnNative.Length; i++)
+                            spawnPoints.Add(spawnNative[i]);
+
+                        spawnBytesArray.Dispose();
                     }
-                    // Triangles
-                    int triBytes = (int)triCount * TRIANGLE_STRIDE;
-                    int triOffset = HEADER_BYTES;
-                    
-                    var triBytesArray = new NativeArray<byte>(triBytes, Allocator.Temp);
-                    NativeArray<byte>.Copy(raw, triOffset, triBytesArray, 0, triBytes);
-                    
-
-                    var triNative = triBytesArray.Reinterpret<MCTriangle>(1);
-                    var mesh = ComposeMesh(triNative);
-                    triBytesArray.Dispose();
-
-                    // Spawn points
-                    int spawnOffset = HEADER_BYTES + (int)triCount * TRIANGLE_STRIDE;
-                    int spawnBytes  = (int)spawnCount * SPAWN_POINT_STRIDE;
-
-                    var spawnBytesArray = new NativeArray<byte>(spawnBytes, Allocator.Temp);
-                    NativeArray<byte>.Copy(raw, spawnOffset, spawnBytesArray, 0, spawnBytes);
-                    
-
-                    var spawnNative = spawnBytesArray.Reinterpret<SpawnPoint>(1);
-                    var spawnPoints = new List<SpawnPoint>(spawnNative.Length);
-                    // string debugString = "";
-                    for (int i = 0; i < spawnNative.Length; i++){
-                        spawnPoints.Add(spawnNative[i]);
+                    finally
+                    {
+                        Profiler.EndSample();
                     }
-                    // Debug.Log(debugString);
 
-                    spawnBytesArray.Dispose();
-
-                    // Debug.Log("Readback request completed in " + elapsed.ToString("F2") + " milliseconds");
                     onComplete?.Invoke(mesh, biomeMask, spawnPoints, elapsed);
                 }
                 finally
                 {
+                    endReadback?.Invoke();
                     ReleaseAll();
                 }
             });
+            onReadbackQueued?.Invoke();
+            return true;
         }
         catch
         {
             ReleaseAll();
+            endReadback?.Invoke();
             onComplete?.Invoke(null, 0, new List<SpawnPoint>(), 0f);
+            return false;
         }
     }
 
 
 
+
+    static uint ReadUInt32(NativeArray<byte> raw, int offset) =>
+        (uint)(raw[offset] | (raw[offset + 1] << 8) | (raw[offset + 2] << 16) | (raw[offset + 3] << 24));
 
     private Vector3[] _verts;
     private int[] _indices;
@@ -266,45 +295,52 @@ public class MCBaker
 
     private Mesh ComposeMesh(NativeArray<MCTriangle> triangles)
     {
-        var mesh = new Mesh { indexFormat = IndexFormat.UInt32 };
-        int n = triangles.Length;
-        if (n == 0)
+        Profiler.BeginSample("Chunk.Mesh.Compose");
+        try
+        {
+            var mesh = new Mesh { indexFormat = IndexFormat.UInt32 };
+            int n = triangles.Length;
+            if (n == 0)
+                return mesh;
+
+            int vCount = n * 3;
+
+            if (_verts == null || _verts.Length < vCount)
+            {
+                _verts = new Vector3[vCount];
+                _indices = new int[vCount];
+                _colors = new Color[vCount];
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                int baseIdx = i * 3;
+
+                _verts[baseIdx]     = triangles[i].position0;
+                _verts[baseIdx + 1] = triangles[i].position1;
+                _verts[baseIdx + 2] = triangles[i].position2;
+
+                _indices[baseIdx]     = baseIdx;
+                _indices[baseIdx + 1] = baseIdx + 1;
+                _indices[baseIdx + 2] = baseIdx + 2;
+
+                Color c = new Color(triangles[i].color.x, triangles[i].color.y, triangles[i].color.z);
+                _colors[baseIdx] = _colors[baseIdx + 1] = _colors[baseIdx + 2] = c;
+            }
+
+            mesh.Clear();
+            mesh.SetVertices(_verts, 0, vCount);
+            mesh.SetIndices(_indices, 0, vCount, MeshTopology.Triangles, 0, true);
+            mesh.SetColors(_colors, 0, vCount);
+
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
             return mesh;
-
-        int vCount = n * 3;
-
-        // allocate only when capacity is insufficient
-        if (_verts == null || _verts.Length < vCount)
-        {
-            _verts = new Vector3[vCount];
-            _indices = new int[vCount];
-            _colors = new Color[vCount];
         }
-
-        for (int i = 0; i < n; i++)
+        finally
         {
-            int baseIdx = i * 3;
-
-            _verts[baseIdx]     = triangles[i].position0;
-            _verts[baseIdx + 1] = triangles[i].position1;
-            _verts[baseIdx + 2] = triangles[i].position2;
-
-            _indices[baseIdx]     = baseIdx;
-            _indices[baseIdx + 1] = baseIdx + 1;
-            _indices[baseIdx + 2] = baseIdx + 2;
-
-            Color c = new Color(triangles[i].color.x, triangles[i].color.y, triangles[i].color.z);
-            _colors[baseIdx] = _colors[baseIdx + 1] = _colors[baseIdx + 2] = c;
+            Profiler.EndSample();
         }
-
-        mesh.Clear();
-        mesh.SetVertices(_verts, 0, vCount);
-        mesh.SetIndices(_indices, 0, vCount, MeshTopology.Triangles, 0, true);
-        mesh.SetColors(_colors, 0, vCount);
-
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
     }
 
 

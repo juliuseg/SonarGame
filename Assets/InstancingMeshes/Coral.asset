@@ -16,5 +16,6 @@ MonoBehaviour:
   material: {fileID: 2100000, guid: b0cb33e3762f244898ed62d7e7c38d55, type: 2}
   scale: 2.32
   scaleOffset: 0.96
-  yOffset: -0.42
+  verticalBias: 0.581
+  yOffset: -0.05
   probability: 0.85

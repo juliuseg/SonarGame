@@ -26,12 +26,11 @@ public class ChunkSDFVisualizer : MonoBehaviour
         if (!enabled) return;
         if (_chunkManager == null) return;
         if (!_chunkManager.TryGetChunk(debugChunkCoord, out var chunk)) return;
-        if (chunk.sdfData == null) return;
-        float[,,] data = chunk.sdfData;
-    
-        int sx = data.GetLength(0);
-        int sy = data.GetLength(1);
-        int sz = data.GetLength(2);
+        if (!chunk.HasSdfData) return;
+
+        int sx = chunk.sdfDims.x;
+        int sy = chunk.sdfDims.y;
+        int sz = chunk.sdfDims.z;
         int minX = -sx / 2;
         int minY = -sy / 2;
         int minZ = -sz / 2;
@@ -44,7 +43,7 @@ public class ChunkSDFVisualizer : MonoBehaviour
         for (int y = minY; y < sy + minY; y++)
         for (int z = minZ; z < sz + minZ; z++)
         {
-            float d = data[x - minX, y - minY, z - minZ];
+            float d = chunk.GetVoxel(x - minX, y - minY, z - minZ);
             float f = d * colorMultiplier;
             Gizmos.color = new Color(f, -f, 0f, 1);//0.3f * Mathf.Clamp01(Mathf.Abs(f)));
             Vector3 pos = chunkCenter + new Vector3(x * scale.x, y * scale.y, z * scale.z);

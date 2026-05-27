@@ -7,7 +7,7 @@ public class ChunkStreamer
     [Header("References")]
     private Transform _target; // defaults to this.transform
     
-    private ChunkSettings _chunkSettings;
+    private ChunkStreamingSettings _chunkStreamingSettings;
     
     private bool reloadTerrain = false;  // IMPLEMENT THIS AT SOME POINT...
 
@@ -24,13 +24,14 @@ public class ChunkStreamer
 
 
     private readonly HashSet<Vector3Int> _dirty = new();
+    private readonly List<Vector3Int> _unloadScratch = new();
     
     
-    public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkSettings chunkSettings, Transform target)
+    public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkStreamingSettings chunkStreamingSettings, Transform target)
     {
         _chunkBuilder = chunkBuilder;
         _chunkManager = chunkManager;
-        _chunkSettings = chunkSettings;
+        _chunkStreamingSettings = chunkStreamingSettings;
         _target = target;
 
         _chunkBuilder.OnChunkReady += OnChunkReady;
@@ -52,7 +53,7 @@ public class ChunkStreamer
         Vector3 chunkSize = _chunkManager.GetChunkSize();
         Vector3Int center = _chunkManager.WorldToChunk(_target.position);
 
-        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkSettings);
+        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
 
         // Always evaluate needed and far chunks
         EnqueueNeeded(center, chunkSize, radius);
@@ -66,72 +67,18 @@ public class ChunkStreamer
 
 
         // Compute potential max chunks based on radius and chunk size.
-        // int maxRange = Mathf.CeilToInt((radius*0.5f + _chunkSettings.unloadBuffer) / Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z)));
-        // int maxChunks = (maxRange * 2 + 1) * (maxRange * 2 + 1) * (maxRange * 2 + 1);
-        // // Debug.Log($"Potential max chunks: {maxChunks}");
+        int maxRange = Mathf.CeilToInt((radius*0.5f + _chunkStreamingSettings.unloadBuffer) / Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z)));
+        int maxChunks = (maxRange * 2 + 1) * (maxRange * 2 + 1) * (maxRange * 2 + 1);
+        // Debug.Log($"Potential max chunks: {maxChunks}");
     }
-
-    // ----- GPU Instancing -----
-
-
-
-
-
-    // call this once per frame after terrain builds
-    private void DrawSpawnInstances(List<SpawnPoint> spawnPoints, InstancingMesh instancingMesh)
-    {
-        if (instancingMesh == null || instancingMesh.material == null) return;
-        Mesh instanceMesh = instancingMesh.mesh;
-        Material instanceMaterial = instancingMesh.material;
-        float meshScale = instancingMesh.scale;
-        float meshScaleOffset = instancingMesh.scaleOffset;
-        float meshYOffset = instancingMesh.yOffset;
-
-        // after collecting from all chunks
-        int total = spawnPoints.Count;
-        if (total == 0) return;
-
-
-        int count = total;
-        // Debug.Log($"Drawing {count} spawn points");
-
-        // prepare matrices
-        Matrix4x4[] matrices = new Matrix4x4[count];
-
-        int drawn = 0;
-        
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 pos = spawnPoints[drawn + i].positionWS;
-            Vector3 normal = spawnPoints[drawn + i].normalWS;
-            float scale = meshScale + (ChunkMath.Hash(pos) * 2f - 1f) * meshScaleOffset;
-            scale = Mathf.Max(scale, 0.01f);
-
-            matrices[i] = Matrix4x4.TRS(
-                pos + (1-normal.y) * meshYOffset * Vector3.up,
-                Quaternion.Euler(0,1f,0),//Quaternion.FromToRotation(Vector3.up, normal),
-                Vector3.one * scale
-            );
-
-        }
-
-        Graphics.DrawMeshInstanced(instanceMesh, 0, instanceMaterial, matrices, count);
-        
-        
-    }
-
 
 
     // ----- core -----
 
-
-    
-
-
     private void EnqueueNeeded(Vector3Int center, Vector3 chunkSize, float radius)
     {
         // Calculate how many chunk steps we need to search to cover the radius
-        int maxRange = Mathf.CeilToInt((radius + _chunkSettings.unloadBuffer) / Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z)));
+        int maxRange = Mathf.CeilToInt((radius + _chunkStreamingSettings.unloadBuffer) / Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z)));
 
         for (int dx = -maxRange; dx <= maxRange; dx++)
         for (int dy = -maxRange; dy <= maxRange; dy++)
@@ -158,19 +105,23 @@ public class ChunkStreamer
 
     private void BuildQueued(float radius)
     {
-        int built = 0;
-
-        while (_buildQueue.Count > 0 && built < _chunkSettings.maxBuildsPerFrame)
+        while (_buildQueue.Count > 0)
         {
-            var coord = _buildQueue.Dequeue();
-            _pending.Remove(coord);
+            var coord = _buildQueue.Peek();
 
             Vector3 centerWorld = _chunkManager.ChunkCenterWorld(coord);
-            if (ChunkMath.IsOutOfRange(_target.position, centerWorld, radius)) continue;
+            if (ChunkMath.IsOutOfRange(_target.position, centerWorld, radius))
+            {
+                _buildQueue.Dequeue();
+                _pending.Remove(coord);
+                continue;
+            }
 
+            if (!_chunkBuilder.TrySubmitChunkBuild(coord))
+                break;
+
+            _buildQueue.Dequeue();
             _pending.Add(coord);
-            _chunkBuilder.BuildOne(coord);
-            built++;
         }
 
         _chunkBuilder.FlushPendingColliders();
@@ -200,22 +151,20 @@ public class ChunkStreamer
     // Replace UnloadFar
     private void UnloadFar(Vector3Int center, Vector3 chunkSize, float radius)
     {
-        var toRemove = new List<Vector3Int>();
+        _unloadScratch.Clear();
+        float unloadRadius = radius + _chunkStreamingSettings.unloadBuffer;
 
         foreach (var kvp in _chunkManager.chunks)
         {
             Vector3 worldCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
-            bool outOfRange = ChunkMath.IsOutOfRange(_target.position, worldCenter, radius + _chunkSettings.unloadBuffer);
-            if (outOfRange){
-                // print("Unloading chunk: " + kvp.Key);
-                toRemove.Add(kvp.Key);
-            }
-
-            
+            if (ChunkMath.IsOutOfRange(_target.position, worldCenter, unloadRadius))
+                _unloadScratch.Add(kvp.Key);
         }
 
-        foreach (var c in toRemove) {
+        foreach (var c in _unloadScratch)
+        {
             _pending.Remove(c);
+            _chunkBuilder.CancelBuild(c);
             _chunkManager.DestroyChunk(c);
         }
     }

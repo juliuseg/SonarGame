@@ -10,11 +10,14 @@ public class ChunkManager
 
     private readonly Dictionary<Vector3Int, List<TerraformEdit>> _offloadedEdits = new();
 
-    public MCSettings settings;
+    private MCSettings _mcSettings;
+    
+    private SDFAtlas _atlas;
 
-    public ChunkManager(MCSettings settings)
+    public ChunkManager(MCSettings mcSettings, SDFAtlas atlas)
     {
-        this.settings = settings;
+        _mcSettings = mcSettings;
+        _atlas = atlas;
     }
 
     public bool TryGetChunk(Vector3Int coord, out Chunk chunk)
@@ -38,6 +41,8 @@ public class ChunkManager
     public void SetChunk(Vector3Int coord, Chunk chunk)
     {
         _chunks[coord] = chunk;
+        
+        // Debug.Log($"Total chunks: {_chunks.Count}");
     }
 
     public void Clear()
@@ -72,16 +77,29 @@ public class ChunkManager
                 if (mesh != null) Object.Destroy(mesh);
             }
 
-            if (chunk.sdfBuffer != null) chunk.sdfBuffer.Release();
-            if (chunk.sdfData != null) chunk.sdfData = null;
+            chunk.sdfData = null;
+            chunk.sdfDims = default;
+            if (chunk.spawnPoints != null)
+            {
+                chunk.spawnPoints.Clear();
+                chunk.spawnPoints = null;
+            }
+            if (chunk.interiorSpawnPositions != null)
+            {
+                chunk.interiorSpawnPositions.Clear();
+                chunk.interiorSpawnPositions = null;
+            }
+            _atlas?.FreeSlot(coord);
             _chunks.Remove(coord);
         }
     }
 
     public Vector3 GetChunkSize()
     {
-        return Vector3.Scale(settings.scale, settings.chunkDims);
+        return Vector3.Scale(_mcSettings.scale, _mcSettings.chunkDims);
     }
+
+    public Vector3Int GetSdfChunkDims() => _mcSettings.chunkDims;
 
     public Vector3Int WorldToChunk(Vector3 worldPos)
     {
@@ -142,19 +160,18 @@ public class ChunkManager
         value = 0f;
 
         Vector3Int coord = WorldToChunk(worldPos);
-        if (!TryGetChunk(coord, out var baseChunk) || baseChunk.sdfData == null)
+        if (!TryGetChunk(coord, out var baseChunk) || !baseChunk.HasSdfData)
         {
             // Debug.Log($"Missing chunk or SDF data for world position: {worldPos}");
             return false;
         }
 
-        float[,,] data = baseChunk.sdfData;
-        int sx = data.GetLength(0);
-        int sy = data.GetLength(1);
-        int sz = data.GetLength(2);
+        int sx = baseChunk.sdfDims.x;
+        int sy = baseChunk.sdfDims.y;
+        int sz = baseChunk.sdfDims.z;
 
         Vector3 chunkCenter = ChunkCenterWorld(coord);
-        Vector3 scale = settings.scale;
+        Vector3 scale = _mcSettings.scale;
 
         // local voxel coordinates (continuous)
         Vector3 local = (worldPos - chunkCenter);
@@ -187,13 +204,15 @@ public class ChunkManager
             if (z < 0) { c.z -= 1; z += sz; }
             else if (z >= sz) { c.z += 1; z -= sz; }
 
-            if (!TryGetChunk(c, out var neighbor) || neighbor.sdfData == null)
+            if (!TryGetChunk(c, out var neighbor) || !neighbor.HasSdfData)
                 return 0f;
 
-            float[,,] d = neighbor.sdfData;
-            return d[Mathf.Clamp(x, 0, d.GetLength(0) - 1),
-                    Mathf.Clamp(y, 0, d.GetLength(1) - 1),
-                    Mathf.Clamp(z, 0, d.GetLength(2) - 1)];
+            neighbor.TryGetVoxel(
+                Mathf.Clamp(x, 0, neighbor.sdfDims.x - 1),
+                Mathf.Clamp(y, 0, neighbor.sdfDims.y - 1),
+                Mathf.Clamp(z, 0, neighbor.sdfDims.z - 1),
+                out float v);
+            return v;
         }
 
         float c000 = GetValueFromChunks(x0, y0, z0);
