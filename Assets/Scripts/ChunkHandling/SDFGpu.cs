@@ -116,13 +116,24 @@ public sealed class SDFGpu : IDisposable
 
         // 2) EDT shared params
         edtShader.SetFloat("_MaxDistance", 1e20f);
+        int maxLineLen = Mathf.Max(halo.x, Mathf.Max(halo.y, halo.z));
+        int lineStride = maxLineLen * 4 + 1;
+        int maxLines = Mathf.Max(
+            halo.y * halo.z,
+            Mathf.Max(halo.x * halo.z, halo.x * halo.y));
+        var lineScratch = new ComputeBuffer(maxLines * lineStride, sizeof(float));
+        edtShader.SetInt("_MaxLineLength", maxLineLen);
+        edtShader.SetInt("_LineStride", lineStride);
+        edtShader.SetBuffer(kEDTX, "_LineScratch", lineScratch);
+        edtShader.SetBuffer(kEDTY, "_LineScratch", lineScratch);
+        edtShader.SetBuffer(kEDTZ, "_LineScratch", lineScratch);
 
         // 2a) outside EDT -> edtOutBuf
         edtShader.SetInts("_ChunkDims", halo.x, halo.y, halo.z);
-        RunEDT(densityBuf, edtOutBuf, flip:false, halo);
+        RunEDT(densityBuf, edtOutBuf, lineScratch, flip:false, halo);
 
         // 2b) inside EDT (flip) -> edtInBuf
-        RunEDT(densityBuf, edtInBuf, flip:true, halo);
+        RunEDT(densityBuf, edtInBuf, lineScratch, flip:true, halo);
 
         // 3) SDF combine (trim halos)
         edtShader.SetInts("_ChunkDims", core.x, core.y, core.z);
@@ -140,6 +151,7 @@ public sealed class SDFGpu : IDisposable
             SafeRelease(densityBuf);
             SafeRelease(edtOutBuf);
             SafeRelease(edtInBuf);
+            SafeRelease(lineScratch);
             SafeRelease(biomeBuffer);
             SafeRelease(terraformEditBuf);
         }
@@ -202,7 +214,7 @@ public sealed class SDFGpu : IDisposable
         return true;
     }
 
-    void RunEDT(ComputeBuffer densityBuf, ComputeBuffer outBuf, bool flip, Vector3Int halo)
+    void RunEDT(ComputeBuffer densityBuf, ComputeBuffer outBuf, ComputeBuffer lineScratch, bool flip, Vector3Int halo)
     {
         // X
         edtShader.SetInt("_BinarizeInput", 1);
@@ -210,6 +222,7 @@ public sealed class SDFGpu : IDisposable
         edtShader.SetInt("_FlipDensity", flip ? 1 : 0);
         edtShader.SetBuffer(kEDTX, "EDTInput", densityBuf);
         edtShader.SetBuffer(kEDTX, "EDTBuffer", outBuf);
+        edtShader.SetBuffer(kEDTX, "_LineScratch", lineScratch);
         edtShader.Dispatch(
             kEDTX,
             Mathf.CeilToInt(halo.y / (float)tgXX),
@@ -221,6 +234,7 @@ public sealed class SDFGpu : IDisposable
         edtShader.SetInt("_UseExternalInput", 0);
         edtShader.SetBuffer(kEDTY, "EDTInput", outBuf); // bound but unused
         edtShader.SetBuffer(kEDTY, "EDTBuffer", outBuf);
+        edtShader.SetBuffer(kEDTY, "_LineScratch", lineScratch);
         edtShader.Dispatch(
             kEDTY,
             Mathf.CeilToInt(halo.x / (float)tgYX),
@@ -232,6 +246,7 @@ public sealed class SDFGpu : IDisposable
         edtShader.SetInt("_UseExternalInput", 0);
         edtShader.SetBuffer(kEDTZ, "EDTInput", outBuf); // bound but unused
         edtShader.SetBuffer(kEDTZ, "EDTBuffer", outBuf);
+        edtShader.SetBuffer(kEDTZ, "_LineScratch", lineScratch);
         edtShader.Dispatch(
             kEDTZ,
             Mathf.CeilToInt(halo.x / (float)tgZX),
