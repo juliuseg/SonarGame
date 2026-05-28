@@ -317,6 +317,7 @@ MonoBehaviour:
   sdfThreatSuppress: 0.95
   threatTransforms:
   - {fileID: 765039362}
+  - {fileID: 600519725}
   maxThreats: 16
   threatAvoidRadius: 16
   threatAvoidWeight: 40
@@ -363,13 +364,21 @@ PrefabInstance:
       value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: seed
+      value: 278191
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: speed
-      value: 1.5
+      value: 0.6
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: target
       value: 
       objectReference: {fileID: 765039362}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: idleing
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: jitterHz
       value: 0.4
@@ -391,6 +400,14 @@ PrefabInstance:
       value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: waveAmplitude
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: waveFrequency
+      value: 0.7
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: minSeekStrength
       value: 1
       objectReference: {fileID: 0}
@@ -399,8 +416,28 @@ PrefabInstance:
       value: 0.7
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: speedMaxMultiplier
+      value: 1.3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: speedMinMultiplier
+      value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: targetBiasStrength
       value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: targetSpeedFarDist
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: speedNoiseFrequency
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: targetSpeedNearDist
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: maxTurnRateDegPerSec
@@ -408,6 +445,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: targetAvoidanceRadius
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2561107893015559099, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+      propertyPath: targetSpeedMultiplier
       value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4082039660443388769, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
@@ -1402,6 +1443,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ed36ff4c842284feabaeb62b0bbe27ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
+--- !u!4 &600519725 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 9204126157036350071, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+  m_PrefabInstance: {fileID: 133126661}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &630247866
 GameObject:
   m_ObjectHideFlags: 0

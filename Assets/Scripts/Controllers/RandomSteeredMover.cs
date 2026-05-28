@@ -9,6 +9,24 @@ public class RandomSteeredMover : MonoBehaviour
     public float speed = 4f;
     public float maxTurnRateDegPerSec = 90f;
 
+    [Header("Speed Variation")]
+    public float speedMinMultiplier = 0.8f;
+    public float speedMaxMultiplier = 1.2f;
+    [Tooltip("How quickly speed noise changes over time.")]
+    public float speedNoiseFrequency = 0.2f;
+
+    [Header("Target Speed Boost")]
+    [Tooltip("Speed multiplier at closest range (1 = no change).")]
+    public float targetSpeedMultiplier = 1.3f;
+    public float targetSpeedNearDist = 10f;
+    public float targetSpeedFarDist = 20f;
+
+    [Header("Body Wave")]
+    [Tooltip("Side-to-side wiggle frequency in Hz.")]
+    public float waveFrequency = 1.5f;
+    [Tooltip("Peak yaw offset from forward heading in degrees.")]
+    public float waveAmplitude = 12f;
+
     [Header("Random Steering")]
     [Range(0f, 1f)] public float turningStrength = 0.25f;
     public float jitterHz = 5f;
@@ -58,6 +76,9 @@ public class RandomSteeredMover : MonoBehaviour
     private bool _wasInTargetAvoidanceRange;
     private int _ammo;
     private float _nextReloadTime;
+    private float _wavePhase;
+
+    public float WavePhase => _wavePhase;
 
     public void Init(ChunkManager chunkManager)
     {
@@ -150,8 +171,12 @@ public class RandomSteeredMover : MonoBehaviour
         _dir = Vector3.RotateTowards(_dir, desired, maxRadians, 0f);
         if (_dir.sqrMagnitude < 1e-9f) _dir = Vector3.forward;
 
-        // --- speed slowdown near walls ---
-        float currentSpeed = ComputeSpeed(hasSdf, sdfValue, avoidBias);
+        // --- speed ---
+        float distToPlayer = target != null
+            ? (target.position - transform.position).magnitude
+            : float.MaxValue;
+        float currentSpeed = ComputeSpeed(distToPlayer, hasSdf, sdfValue, avoidBias);
+        Debug.Log($"[{name}] speed: {currentSpeed:F2}");
 
         // --- reload ---
         if (_ammo < magazineSize && Time.time >= _nextReloadTime)
@@ -163,8 +188,10 @@ public class RandomSteeredMover : MonoBehaviour
         // --- shoot ---
         TryShoot();
 
-        // --- move ---
-        transform.position += _dir * currentSpeed * dt;
+        // --- move with time-based body wave (XZ only) ---
+        float speedRatio = speed > 1e-6f ? currentSpeed / speed : 1f;
+        Vector3 moveDir = ApplyBodyWave(_dir, dt, speedRatio);
+        transform.position += moveDir * currentSpeed * dt;
     }
 
     // ---- steering helpers ----
@@ -234,17 +261,28 @@ public class RandomSteeredMover : MonoBehaviour
         }
     }
 
-    private float ComputeSpeed(bool hasSdf, float sdfValue, Vector3 avoidBias)
+    private float ComputeSpeed(float distToPlayer, bool hasSdf, float sdfValue, Vector3 avoidBias)
     {
+        float noise = Mathf.PerlinNoise(Time.time * speedNoiseFrequency, seed * 0.0001f);
+        float speedMul = Mathf.Lerp(speedMinMultiplier, speedMaxMultiplier, noise);
+
+        if (target != null && targetSpeedFarDist > targetSpeedNearDist)
+        {
+            float t = Mathf.InverseLerp(targetSpeedFarDist, targetSpeedNearDist, distToPlayer);
+            speedMul *= Mathf.Lerp(1f, targetSpeedMultiplier, Mathf.Clamp01(t));
+        }
+
+        float result = speed * speedMul;
+
         if (!hasSdf || sdfValue >= avoidanceRadius || avoidBias == Vector3.zero)
-            return speed;
+            return result;
 
         float dot = Vector3.Dot(_dir.normalized, avoidBias.normalized);
-        if (dot >= 0f) return speed;
+        if (dot >= 0f) return result;
 
         float proximity = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
         float slowFactor = 1f - Mathf.Clamp01(Mathf.Clamp01(-dot) * proximity * slowDownFactor);
-        return speed * slowFactor;
+        return result * slowFactor;
     }
 
     private void TryShoot()
@@ -258,6 +296,25 @@ public class RandomSteeredMover : MonoBehaviour
             if (bullet.TryGetComponent<EnemyBulletController>(out var bulletCont))
                 bulletCont.Shoot(_dir.normalized);
         }
+    }
+
+    Vector3 ApplyBodyWave(Vector3 forward, float dt, float speedRatio)
+    {
+        if (waveFrequency <= 0f || waveAmplitude <= 0f)
+            return forward;
+
+        _wavePhase += waveFrequency * speedRatio * Mathf.PI * 2f * dt;
+
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 1e-6f)
+            flatForward = Vector3.forward;
+        flatForward.Normalize();
+
+        float yaw = waveAmplitude * Mathf.Sin(_wavePhase);
+        Vector3 waved = Quaternion.AngleAxis(yaw, Vector3.up) * flatForward;
+        waved.y = forward.y;
+        return waved.normalized;
     }
 
     // ---- utilities ----

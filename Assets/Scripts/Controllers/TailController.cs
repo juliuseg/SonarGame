@@ -1,7 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class TailController : MonoBehaviour
-
 {
     [Header("Setup")]
     public Transform leader;
@@ -12,10 +12,14 @@ public class TailController : MonoBehaviour
     public float segmentDistance = 0.5f;
 
     private Transform[] segments;
+    private readonly List<Vector3> _trail = new List<Vector3>();
+
+    private const int MaxTrailPoints = 512;
 
     void Start()
     {
         SpawnSegments();
+        _trail.Add(leader.position);
     }
 
     void SpawnSegments()
@@ -27,30 +31,52 @@ public class TailController : MonoBehaviour
             GameObject seg = Instantiate(segmentPrefab, leader.position, Quaternion.identity);
             seg.name = $"TailSegment_{i}";
             segments[i] = seg.transform;
+            segments[i].position = leader.position;
         }
     }
 
     void LateUpdate()
     {
-        // First segment follows the leader
-        ConstrainSegment(segments[0], leader);
+        RecordLeaderPosition();
 
-        // Each subsequent segment follows the one before it
-        for (int i = 1; i < segments.Length; i++)
+        for (int i = 0; i < segments.Length; i++)
         {
-            ConstrainSegment(segments[i], segments[i - 1]);
+            float distBack = (i + 1) * segmentDistance;
+            segments[i].position = SampleTrail(distBack);
         }
     }
 
-    void ConstrainSegment(Transform segment, Transform target)
+    void RecordLeaderPosition()
     {
-        float dist = Vector3.Distance(segment.position, target.position);
-
-        if (dist > segmentDistance)
+        Vector3 pos = leader.position;
+        if (_trail.Count == 0 || (pos - _trail[_trail.Count - 1]).sqrMagnitude > 1e-4f)
         {
-            // Pull the segment toward its target so it's exactly segmentDistance away
-            Vector3 direction = (segment.position - target.position).normalized;
-            segment.position = target.position + direction * segmentDistance;
+            _trail.Add(pos);
+            if (_trail.Count > MaxTrailPoints)
+                _trail.RemoveAt(0);
         }
+    }
+
+    Vector3 SampleTrail(float distanceBack)
+    {
+        if (_trail.Count == 0)
+            return leader.position;
+
+        float remaining = distanceBack;
+        for (int i = _trail.Count - 1; i > 0; i--)
+        {
+            Vector3 a = _trail[i];
+            Vector3 b = _trail[i - 1];
+            float segLen = Vector3.Distance(a, b);
+            if (segLen <= 1e-6f)
+                continue;
+
+            if (remaining <= segLen)
+                return Vector3.Lerp(a, b, remaining / segLen);
+
+            remaining -= segLen;
+        }
+
+        return _trail[0];
     }
 }
