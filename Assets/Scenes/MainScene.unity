@@ -286,14 +286,44 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1670307a4a6194ccd9f9c73258dea890, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FishSpawnSystem
+  collectParam: 0.6
+  despawnParam: 0.7
   fishMesh: {fileID: 4855250017748832557, guid: 1b986e5682bf547baa9bae4dc905d482, type: 3}
   fishMaterials:
-  - {fileID: 2100000, guid: f04df374a9ea04de1b1aaaaa0277dc5c, type: 2}
-  - {fileID: 2100000, guid: 74ea2671340e24ed896bb02b79c19207, type: 2}
-  - {fileID: 2100000, guid: 3b5f033c1c6704925a02ae7d5d795e41, type: 2}
+  - {fileID: 2100000, guid: bb117eebe9e1649a1b80e969bd35d433, type: 2}
+  - {fileID: 2100000, guid: b3853915b72e2473389d45ff1c2f5fcc, type: 2}
+  - {fileID: 2100000, guid: 5739093ba1dca438e96adc76f091d207, type: 2}
   fishCompute: {fileID: 7200000, guid: 04a76206adf754cbca2279f36a9da134, type: 3}
+  meshSwimUp: {x: 0, y: 1, z: 0}
+  meshOrientationOffset: {x: -90, y: 90, z: 90}
   maxInstances: 5000
   fishScale: 20
+  swimSpeed: 5
+  minSwimSpeed: 3
+  maxSteerForce: 4
+  speedAccel: 3
+  boidNeighborRadius: 5
+  boidSeparationRadius: 4
+  weightSeparation: 1.5
+  weightAlignment: 1
+  weightCohesion: 0.5
+  sdfAvoidRadius: 4
+  sdfAvoidWeight: 100
+  sdfGradientDelta: 0.5
+  sdfPenetrationForceMult: 4
+  sdfMinClearance: 0.15
+  sdfWallBrakeRadius: 2.5
+  sdfWallBrakeStrength: 0.85
+  sdfThreatSuppress: 0.95
+  threatTransforms:
+  - {fileID: 765039362}
+  maxThreats: 16
+  threatAvoidRadius: 16
+  threatAvoidWeight: 40
+  threatPanicRadius: 6
+  panicSpeedMultiplier: 5
+  panicAccel: 24
+  panicBoostDuration: 1.5
   schoolSize: 20
   schoolCenterSeparation: 10
   schoolMemberSpread: 1.5
@@ -304,6 +334,7 @@ MonoBehaviour:
   drawSpawnGizmos: 0
   gizmoRadiusMultiplier: 1
   maxGizmosDrawn: 256
+  turnOff: 1
 --- !u!4 &81440352
 Transform:
   m_ObjectHideFlags: 0
@@ -313,7 +344,7 @@ Transform:
   m_GameObject: {fileID: 81440350}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.49966, y: -50.01839, z: 31.39671}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -389,7 +420,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4161997751960109428, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7969223727007845047, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -576,6 +607,7 @@ GameObject:
   - component: {fileID: 170415292}
   - component: {fileID: 170415294}
   - component: {fileID: 170415293}
+  - component: {fileID: 170415295}
   m_Layer: 0
   m_Name: Spot Light
   m_TagString: Untagged
@@ -611,7 +643,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
   m_UsePipelineSettings: 1
-  m_AdditionalLightsShadowResolutionTier: 2
+  m_AdditionalLightsShadowResolutionTier: 1
   m_CustomShadowLayers: 0
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
@@ -644,7 +676,7 @@ Light:
   m_InnerSpotAngle: 35.856735
   m_CookieSize2D: {x: 10, y: 10}
   m_Shadows:
-    m_Type: 0
+    m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
     m_Strength: 1
@@ -692,6 +724,18 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!114 &170415295
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 170415291}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 071f001ee7f8249d68349e19c7d48bcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -920,7 +964,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &363364553
 Transform:
   m_ObjectHideFlags: 0
@@ -1120,6 +1164,10 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7875504794590251432, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: chunkParent
+      value: 
+      objectReference: {fileID: 1044018139}
+    - target: {fileID: 7875504794590251432, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: sdfAtlasTest
       value: 
       objectReference: {fileID: 2107575219}
@@ -1158,6 +1206,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 158361632268675231, guid: 570060f68caa042529407a5b291959fe, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2107575219}
+    - targetCorrespondingSourceObject: {fileID: 158361632268675231, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2107575222}
   m_SourcePrefab: {fileID: 100100000, guid: 570060f68caa042529407a5b291959fe, type: 3}
 --- !u!1 &462080001
 GameObject:
@@ -1893,7 +1944,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20369f856080d48eeb0c6effd393814a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FPSController
-  moveForce: 2000
+  moveForce: 3400
   turnForce: 70
   pitchForce: 70
   inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
@@ -2084,7 +2135,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &966090001
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2440,7 +2491,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1030044934
 Transform:
   m_ObjectHideFlags: 0
@@ -2550,6 +2601,37 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!1 &1044018138
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1044018139}
+  m_Layer: 0
+  m_Name: ChunkParent
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1044018139
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1044018138}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1044127095
 GameObject:
   m_ObjectHideFlags: 0
@@ -2821,7 +2903,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1156977172
 Transform:
   m_ObjectHideFlags: 0
@@ -2949,7 +3031,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!135 &1331636104
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -3432,7 +3514,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1529163043
 Transform:
   m_ObjectHideFlags: 0
@@ -3936,6 +4018,18 @@ MonoBehaviour:
   testShader: {fileID: 7200000, guid: deef3aad98ae4025a37206c19f8aa98a, type: 3}
   gpuSdfValue: 0
   cpuSdfValue: 0
+--- !u!114 &2107575222
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2107575216}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 889740f5ee2c348bf9cff97212d9b914, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
 --- !u!1 &2124099354
 GameObject:
   m_ObjectHideFlags: 0
@@ -4082,3 +4176,4 @@ SceneRoots:
   - {fileID: 1331636107}
   - {fileID: 363364553}
   - {fileID: 81440352}
+  - {fileID: 1044018139}

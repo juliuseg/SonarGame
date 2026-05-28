@@ -71,7 +71,7 @@ public class Bootstrap : MonoBehaviour
             sdfAtlasTest.Init(chunkManager, sdfAtlas, mcSettings);
 
         if (fishSpawnSystem != null)
-            fishSpawnSystem.Init(chunkManager, chunkStreamingSettings, chunkLoaderTarget);
+            fishSpawnSystem.Init(chunkManager, chunkStreamingSettings, chunkLoaderTarget, sdfAtlas, mcSettings);
     }
 
     void Update()

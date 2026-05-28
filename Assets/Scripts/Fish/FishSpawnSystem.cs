@@ -15,9 +15,17 @@ public class FishSpawnSystem : MonoBehaviour
     struct Fish
     {
         public Vector3 position;
+        public Vector3 velocity;
+        public float panicTimer;
         public Vector3Int sourceChunk;
         public bool isStray;
     }
+
+    [Header("Collect and despawn")] 
+    [SerializeField] private float collectParam;
+
+    [SerializeField] private float despawnParam;
+    
 
     [Header("Draw")]
     public Mesh fishMesh;
@@ -25,9 +33,57 @@ public class FishSpawnSystem : MonoBehaviour
     public List<Material> fishMaterials = new();
     public ComputeShader fishCompute;
 
+    [Header("Mesh orientation (draw)")]
+    [Tooltip("World 'up' hint when aligning mesh to swim velocity (roll around forward axis).")]
+    public Vector3 meshSwimUp = Vector3.up;
+    [Tooltip("Euler fix if imported mesh forward/up don't match Unity (+Z forward, +Y up).")]
+    public Vector3 meshOrientationOffset;
+
     [Header("Counts")]
     [Min(1)] public int maxInstances = 5000;
     [Min(0.01f)] public float fishScale = 1f;
+
+    [Header("Movement")]
+    [Min(0f)] public float swimSpeed = 2f;
+    [Min(0f)] public float minSwimSpeed = 0.5f;
+    [Min(0f)] public float maxSteerForce = 4f;
+    [Tooltip("Max speed change per second under normal swimming.")]
+    [Min(0.01f)] public float speedAccel = 3f;
+
+    [Header("Boids")]
+    [Min(0.1f)] public float boidNeighborRadius = 8f;
+    [Min(0.1f)] public float boidSeparationRadius = 3f;
+    [Min(0f)] public float weightSeparation = 1.5f;
+    [Min(0f)] public float weightAlignment = 1f;
+    [Min(0f)] public float weightCohesion = 0.8f;
+
+    [Header("SDF Avoidance")]
+    [Tooltip("Start steering away when SDF is below this (world units).")]
+    [Min(0.01f)] public float sdfAvoidRadius = 2f;
+    [Min(0f)] public float sdfAvoidWeight = 12f;
+    [Min(0.01f)] public float sdfGradientDelta = 0.5f;
+    [Tooltip("Extra steer multiplier when sdf < 0 (inside solid).")]
+    [Min(1f)] public float sdfPenetrationForceMult = 4f;
+    [Tooltip("Min sdf after correction — fish are pushed out to at least this.")]
+    [Min(0.01f)] public float sdfMinClearance = 0.15f;
+    [Tooltip("Slow down when velocity points into the wall within this sdf range.")]
+    [Min(0.01f)] public float sdfWallBrakeRadius = 2.5f;
+    [Range(0f, 1f)] public float sdfWallBrakeStrength = 0.85f;
+    [Range(0f, 1f)] public float sdfThreatSuppress = 0.95f;
+
+    [Header("Threat Avoidance")]
+    [Tooltip("Player, large enemies, etc. Fish steer away when within radius.")]
+    public List<Transform> threatTransforms = new();
+    [Min(1)] public int maxThreats = 16;
+    [Min(0.1f)] public float threatAvoidRadius = 10f;
+    [Min(0f)] public float threatAvoidWeight = 18f;
+    [Tooltip("Inside this radius fish panic and can burst to high speed.")]
+    [Min(0.1f)] public float threatPanicRadius = 6f;
+    [Min(1f)] public float panicSpeedMultiplier = 2.5f;
+    [Tooltip("How fast speed can rise during panic (units/s per second).")]
+    [Min(0.1f)] public float panicAccel = 24f;
+    [Tooltip("Keeps elevated speed briefly after leaving panic radius.")]
+    [Min(0f)] public float panicBoostDuration = 1.5f;
 
     [Header("Schools")]
     [Min(1)] public int schoolSize = 30;
@@ -47,10 +103,14 @@ public class FishSpawnSystem : MonoBehaviour
     public bool drawSpawnGizmos = true;
     [Min(0.1f)] public float gizmoRadiusMultiplier = 1f;
     [Min(1)] public int maxGizmosDrawn = 256;
+    public bool turnOff;
 
     private ChunkManager _chunkManager;
     private ChunkStreamingSettings _streamingSettings;
+    private SDFAtlas _sdfAtlas;
+    private MCSettings _mcSettings;
     private Transform _target;
+    private Vector3 _chunkSizeWorld;
 
     private Material[] _drawMaterials;
     private bool _materialMismatchLogged;
@@ -70,11 +130,17 @@ public class FishSpawnSystem : MonoBehaviour
 
     private readonly List<SpawnIndexDist> _nearestSpawnScratch = new();
 
-    private ComputeBuffer _positionsBuffer;
+    private ComputeBuffer _positionsIn;
+    private ComputeBuffer _positionsOut;
+    private ComputeBuffer _velocitiesIn;
+    private ComputeBuffer _velocitiesOut;
     private ComputeBuffer _matricesBuffer;
+    private ComputeBuffer _threatBuffer;
     private ComputeBuffer _argsBuffer;
+    private Vector4[] _positionScratch;
+    private Vector4[] _threatScratch;
+    private Vector4[] _velocityScratch;
     private Matrix4x4[] _matrixScratch;
-    private readonly List<Vector4> _drawPositions = new();
 
     private int _kernelBoid;
     private int _activeCount;
@@ -85,18 +151,34 @@ public class FishSpawnSystem : MonoBehaviour
     public void Init(
         ChunkManager chunkManager,
         ChunkStreamingSettings streamingSettings,
-        Transform target)
+        Transform target,
+        SDFAtlas sdfAtlas,
+        MCSettings mcSettings)
     {
+        if (turnOff) return;
         _chunkManager = chunkManager;
         _streamingSettings = streamingSettings;
+        _sdfAtlas = sdfAtlas;
+        _mcSettings = mcSettings;
         _target = target;
+        _chunkSizeWorld = mcSettings != null
+            ? Vector3.Scale(mcSettings.scale, mcSettings.chunkDims)
+            : _chunkManager.GetChunkSize();
 
         if (fishCompute != null)
             _kernelBoid = fishCompute.FindKernel("BoidUpdate");
 
+        _positionScratch = new Vector4[maxInstances];
+        _velocityScratch = new Vector4[maxInstances];
         _matrixScratch = new Matrix4x4[maxInstances];
-        _positionsBuffer = new ComputeBuffer(maxInstances, sizeof(float) * 4);
+        _positionsIn = new ComputeBuffer(maxInstances, sizeof(float) * 4);
+        _positionsOut = new ComputeBuffer(maxInstances, sizeof(float) * 4);
+        _velocitiesIn = new ComputeBuffer(maxInstances, sizeof(float) * 4);
+        _velocitiesOut = new ComputeBuffer(maxInstances, sizeof(float) * 4);
         _matricesBuffer = new ComputeBuffer(maxInstances, sizeof(float) * 16);
+        int threatCapacity = Mathf.Max(1, maxThreats);
+        _threatScratch = new Vector4[threatCapacity];
+        _threatBuffer = new ComputeBuffer(threatCapacity, sizeof(float) * 4);
         EnsureArgsCapacity(fishMesh);
         EnsureDrawMaterials();
     }
@@ -207,6 +289,7 @@ public class FishSpawnSystem : MonoBehaviour
 
     public void Tick()
     {
+        if (turnOff) return;
         if (_chunkManager == null || _target == null)
             return;
 
@@ -216,7 +299,17 @@ public class FishSpawnSystem : MonoBehaviour
 
         DespawnByDistance();
         TrySpawnNewChunksOnce();
-        SyncDrawBuffers();
+
+        if (_fish.Count == 0)
+        {
+            _activeCount = 0;
+            LogDrawCount(0);
+            return;
+        }
+
+        IntegrateFishSimulation();
+        SyncSimulationBuffers();
+        UploadDrawMatrices();
 
         if (_activeCount == 0)
         {
@@ -224,14 +317,13 @@ public class FishSpawnSystem : MonoBehaviour
             return;
         }
 
-        DispatchBoidPlaceholder();
         DrawIndirect();
     }
 
     private float GetStreamRadius() =>
         ChunkMath.GetDynamicRadius(_target.position, _streamingSettings);
 
-    private float GetCollectRadius() => GetStreamRadius() * 0.8f;
+    private float GetCollectRadius() => GetStreamRadius() * collectParam;
 
     /// <summary>
     /// How many chunk centers fall inside the fish collect volume (same ellipse as streaming).
@@ -268,7 +360,7 @@ public class FishSpawnSystem : MonoBehaviour
     private void DespawnByDistance()
     {
         Vector3 player = _target.position;
-        float r = GetStreamRadius() * 0.95f;
+        float r = GetStreamRadius() * despawnParam;
         float rSq = r * r;
 
         for (int i = _fish.Count - 1; i >= 0; i--)
@@ -382,6 +474,7 @@ public class FishSpawnSystem : MonoBehaviour
             _fish.Add(new Fish
             {
                 position = spawns[idx],
+                velocity = RandomSwimVelocity(chunk, 9000 + slot),
                 sourceChunk = chunk,
                 isStray = true
             });
@@ -420,6 +513,7 @@ public class FishSpawnSystem : MonoBehaviour
             _schoolCenterIndices.Add(centerIdx);
 
             PickSchoolMemberIndices(spawns, centerIdx, need, minMemberDistSq, _schoolSpawnIndices);
+            Vector3 schoolVelocity = RandomSwimVelocity(chunk, s * 31 + 7);
 
             for (int i = 0; i < _schoolSpawnIndices.Count; i++)
             {
@@ -430,6 +524,7 @@ public class FishSpawnSystem : MonoBehaviour
                 _fish.Add(new Fish
                 {
                     position = spawns[idx],
+                    velocity = schoolVelocity,
                     sourceChunk = chunk,
                     isStray = false
                 });
@@ -598,6 +693,19 @@ public class FishSpawnSystem : MonoBehaviour
             result.Add(_nearestSpawnScratch[k].index);
     }
 
+    private Vector3 RandomSwimVelocity(Vector3Int chunk, int seed)
+    {
+        float u = SchoolHash01(chunk, seed * 3 + 11);
+        float v = SchoolHash01(chunk, seed * 3 + 22);
+        float yaw = u * Mathf.PI * 2f;
+        float pitch = (v - 0.5f) * 0.5f;
+        float cp = Mathf.Cos(pitch);
+        var dir = new Vector3(Mathf.Sin(yaw) * cp, Mathf.Sin(pitch), Mathf.Cos(yaw) * cp);
+        if (dir.sqrMagnitude < 1e-8f)
+            dir = Vector3.forward;
+        return dir.normalized * swimSpeed;
+    }
+
     private static float SchoolHash01(Vector3Int chunk, int schoolIndex)
     {
         uint h = (uint)(chunk.x * 73856093
@@ -611,32 +719,116 @@ public class FishSpawnSystem : MonoBehaviour
         return (h & 0x00FFFFFF) / 16777216f;
     }
 
-    private void SyncDrawBuffers()
+    private void SyncSimulationBuffers()
     {
-        _drawPositions.Clear();
-        int count = Mathf.Min(_fish.Count, maxInstances);
+        _activeCount = Mathf.Min(_fish.Count, maxInstances);
 
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 p = _fish[i].position;
-            _drawPositions.Add(new Vector4(p.x, p.y, p.z, 1f));
-        }
-
-        _activeCount = count;
-
-        Vector3 scale = Vector3.one * fishScale;
         for (int i = 0; i < _activeCount; i++)
         {
-            Vector3 p = _drawPositions[i];
-            float spin = ChunkMath.Hash(p + Vector3.one * 0.37f) * 360f;
-            _matrixScratch[i] = Matrix4x4.TRS(p, Quaternion.Euler(0f, spin, 0f), scale);
+            Vector3 p = _fish[i].position;
+            Vector3 v = _fish[i].velocity;
+            _positionScratch[i] = new Vector4(p.x, p.y, p.z, 1f);
+            _velocityScratch[i] = new Vector4(v.x, v.y, v.z, _fish[i].panicTimer);
         }
 
         if (_activeCount > 0)
         {
-            _matricesBuffer.SetData(_matrixScratch, 0, 0, _activeCount);
-            _positionsBuffer.SetData(_drawPositions, 0, 0, _activeCount);
+            _positionsIn.SetData(_positionScratch, 0, 0, _activeCount);
+            _velocitiesIn.SetData(_velocityScratch, 0, 0, _activeCount);
         }
+    }
+
+    private void IntegrateFishSimulation()
+    {
+        if (fishCompute != null && _fish.Count > 0)
+        {
+            SyncSimulationBuffers();
+            DispatchBoidUpdate();
+            ReadbackSimulationFromGpu();
+            return;
+        }
+
+    }
+
+    private int UploadThreatPositions()
+    {
+        if (threatTransforms == null || _threatScratch == null)
+            return 0;
+
+        int capacity = _threatScratch.Length;
+        int count = 0;
+        for (int i = 0; i < threatTransforms.Count && count < capacity; i++)
+        {
+            Transform t = threatTransforms[i];
+            if (t == null)
+                continue;
+            Vector3 p = t.position;
+            _threatScratch[count] = new Vector4(p.x, p.y, p.z, 0f);
+            count++;
+        }
+
+        if (count > 0)
+            _threatBuffer.SetData(_threatScratch, 0, 0, count);
+
+        return count;
+    }
+    private void ReadbackSimulationFromGpu()
+    {
+        if (_activeCount == 0)
+            return;
+
+        _positionsOut.GetData(_positionScratch, 0, 0, _activeCount);
+        _velocitiesOut.GetData(_velocityScratch, 0, 0, _activeCount);
+        for (int i = 0; i < _activeCount; i++)
+        {
+            var fish = _fish[i];
+            Vector4 p = _positionScratch[i];
+            Vector4 v = _velocityScratch[i];
+            fish.position = new Vector3(p.x, p.y, p.z);
+            fish.velocity = new Vector3(v.x, v.y, v.z);
+            fish.panicTimer = v.w;
+            _fish[i] = fish;
+        }
+    }
+
+    private Quaternion GetFishDrawRotation(Vector3 position, Vector3 velocity)
+    {
+        if (velocity.sqrMagnitude > 1e-6f)
+        {
+            Vector3 forward = velocity.normalized;
+            Vector3 up = meshSwimUp.sqrMagnitude > 1e-6f ? meshSwimUp.normalized : Vector3.up;
+
+            if (Mathf.Abs(Vector3.Dot(forward, up)) > 0.98f)
+            {
+                Vector3 fallback = Mathf.Abs(forward.y) < 0.9f ? Vector3.up : Vector3.right;
+                up = Vector3.Cross(forward, fallback).normalized;
+            }
+
+            return Quaternion.LookRotation(forward, up);
+        }
+
+        float spin = ChunkMath.Hash(position + Vector3.one * 0.37f) * 360f;
+        return Quaternion.Euler(0f, spin, 0f);
+    }
+
+    private void UploadDrawMatrices()
+    {
+        _activeCount = Mathf.Min(_fish.Count, maxInstances);
+        if (_activeCount == 0)
+            return;
+
+        Vector3 scale = Vector3.one * fishScale;
+        Quaternion meshFix = Quaternion.Euler(meshOrientationOffset);
+
+        for (int i = 0; i < _activeCount; i++)
+        {
+            Vector3 p = _fish[i].position;
+            Vector3 v = _fish[i].velocity;
+            Quaternion rotation = GetFishDrawRotation(p, v) * meshFix;
+            _matrixScratch[i] = Matrix4x4.TRS(p, rotation, scale);
+        }
+
+        _matricesBuffer.SetData(_matrixScratch, 0, 0, _activeCount);
     }
 
     private static int CompareChunkKeys(Vector3Int a, Vector3Int b)
@@ -661,12 +853,64 @@ public class FishSpawnSystem : MonoBehaviour
         return (int)(h % (uint)count);
     }
 
-    private void DispatchBoidPlaceholder()
+    private void DispatchBoidUpdate()
     {
-        if (fishCompute == null || _activeCount == 0) return;
+        if (fishCompute == null || _activeCount == 0)
+            return;
 
-        fishCompute.SetBuffer(_kernelBoid, "_Matrices", _matricesBuffer);
+        bool useAtlas = _sdfAtlas != null && _mcSettings != null;
+        if (useAtlas)
+            _sdfAtlas.FlushLookup();
+
+        fishCompute.SetBuffer(_kernelBoid, "_PositionsIn", _positionsIn);
+        fishCompute.SetBuffer(_kernelBoid, "_VelocitiesIn", _velocitiesIn);
+        fishCompute.SetBuffer(_kernelBoid, "_PositionsOut", _positionsOut);
+        fishCompute.SetBuffer(_kernelBoid, "_VelocitiesOut", _velocitiesOut);
         fishCompute.SetInt("_Count", _activeCount);
+        fishCompute.SetFloat("_DeltaTime", Time.deltaTime);
+        fishCompute.SetInt("_UseSdfAtlas", useAtlas ? 1 : 0);
+        fishCompute.SetFloat("_NeighborRadius", boidNeighborRadius);
+        fishCompute.SetFloat("_SeparationRadius", boidSeparationRadius);
+        fishCompute.SetFloat("_WeightSeparation", weightSeparation);
+        fishCompute.SetFloat("_WeightAlignment", weightAlignment);
+        fishCompute.SetFloat("_WeightCohesion", weightCohesion);
+        fishCompute.SetFloat("_MaxSpeed", swimSpeed);
+        fishCompute.SetFloat("_MinSpeed", Mathf.Min(minSwimSpeed, swimSpeed));
+        fishCompute.SetFloat("_MaxSteerForce", maxSteerForce);
+        fishCompute.SetFloat("_SdfAvoidRadius", sdfAvoidRadius);
+        fishCompute.SetFloat("_SdfAvoidWeight", sdfAvoidWeight);
+        fishCompute.SetFloat("_SdfGradientDelta", sdfGradientDelta);
+        fishCompute.SetFloat("_SdfPenetrationForceMult", sdfPenetrationForceMult);
+        fishCompute.SetFloat("_SdfMinClearance", sdfMinClearance);
+        fishCompute.SetFloat("_SdfWallBrakeRadius", sdfWallBrakeRadius);
+        fishCompute.SetFloat("_SdfWallBrakeStrength", sdfWallBrakeStrength);
+        fishCompute.SetFloat("_SdfThreatSuppress", sdfThreatSuppress);
+
+        int threatCount = UploadThreatPositions();
+        fishCompute.SetBuffer(_kernelBoid, "_ThreatPositions", _threatBuffer);
+        fishCompute.SetInt("_ThreatCount", threatCount);
+        fishCompute.SetFloat("_ThreatAvoidRadius", threatAvoidRadius);
+        fishCompute.SetFloat("_ThreatAvoidWeight", threatAvoidWeight);
+        fishCompute.SetFloat("_ThreatPanicRadius", threatPanicRadius);
+        fishCompute.SetFloat("_SpeedAccel", speedAccel);
+        fishCompute.SetFloat("_PanicSpeedMult", panicSpeedMultiplier);
+        fishCompute.SetFloat("_PanicAccel", panicAccel);
+        fishCompute.SetFloat("_PanicBoostDuration", panicBoostDuration);
+
+        if (useAtlas)
+        {
+            fishCompute.SetBuffer(_kernelBoid, "_Lookup", _sdfAtlas.LookupBuffer);
+            fishCompute.SetBuffer(_kernelBoid, "_Atlas", _sdfAtlas.AtlasBuffer);
+            fishCompute.SetVector("_ChunkSize", _chunkSizeWorld);
+            fishCompute.SetVector("_Scale", _mcSettings.scale);
+            fishCompute.SetInts("_ChunkDims",
+                _mcSettings.chunkDims.x,
+                _mcSettings.chunkDims.y,
+                _mcSettings.chunkDims.z);
+            fishCompute.SetInt("_SlotSize", _sdfAtlas.SlotSize);
+            fishCompute.SetInt("_LookupCount", _sdfAtlas.MaxSlots);
+        }
+
         int groups = Mathf.CeilToInt(_activeCount / 64f);
         fishCompute.Dispatch(_kernelBoid, groups, 1, 1);
     }
@@ -720,7 +964,7 @@ public class FishSpawnSystem : MonoBehaviour
     {
         if (!logDrawCount || Time.time < _nextLogTime) return;
         _nextLogTime = Time.time + logInterval;
-        Debug.Log($"[FishSpawn] draw={count} alive={_fish.Count} despawnR={GetStreamRadius() * 0.7f:F0}");
+        // Debug.Log($"[FishSpawn] draw={count} alive={_fish.Count} despawnR={GetStreamRadius() * 0.7f:F0}");
     }
 
     private void OnDrawGizmos()
@@ -737,8 +981,12 @@ public class FishSpawnSystem : MonoBehaviour
     private void OnDestroy()
     {
         DestroyDrawMaterials();
-        _positionsBuffer?.Release();
+        _positionsIn?.Release();
+        _positionsOut?.Release();
+        _velocitiesIn?.Release();
+        _velocitiesOut?.Release();
         _matricesBuffer?.Release();
+        _threatBuffer?.Release();
         _argsBuffer?.Release();
     }
 }

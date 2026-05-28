@@ -111,7 +111,7 @@ public class FPSController : MonoBehaviour
         if (Mathf.Abs(forwardInput) > 0.1f)
         {
             float spd_mult = 1;
-            if (Keyboard.current.mKey.isPressed) spd_mult = 10;
+            if (Keyboard.current.mKey.isPressed) spd_mult = 3;
             rb.AddForce(forwardInput * moveForce * spd_mult * transform.forward, ForceMode.Force);
         }
 

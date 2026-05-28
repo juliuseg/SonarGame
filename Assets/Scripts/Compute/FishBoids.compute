@@ -1,45 +1,314 @@
-#pragma kernel BuildInstances
 #pragma kernel BoidUpdate
 
-StructuredBuffer<float4> _Positions;
-RWStructuredBuffer<float4x4> _Matrices;
+#include "Includes/SampleSdfAtlas.hlsl"
+
+StructuredBuffer<float4> _PositionsIn;
+StructuredBuffer<float4> _VelocitiesIn;
+RWStructuredBuffer<float4> _PositionsOut;
+RWStructuredBuffer<float4> _VelocitiesOut;
+
 uint _Count;
-float _Scale;
+float _DeltaTime;
+int _UseSdfAtlas;
 
-float Hash(float3 p)
+float _NeighborRadius;
+float _SeparationRadius;
+float _WeightSeparation;
+float _WeightAlignment;
+float _WeightCohesion;
+float _MaxSpeed;
+float _MinSpeed;
+float _MaxSteerForce;
+
+float _SdfAvoidRadius;
+float _SdfAvoidWeight;
+float _SdfGradientDelta;
+float _SdfPenetrationForceMult;
+float _SdfMinClearance;
+float _SdfWallBrakeRadius;
+float _SdfWallBrakeStrength;
+float _SdfThreatSuppress;
+
+StructuredBuffer<float4> _ThreatPositions;
+uint _ThreatCount;
+float _ThreatAvoidRadius;
+float _ThreatAvoidWeight;
+float _ThreatPanicRadius;
+float _SpeedAccel;
+float _PanicSpeedMult;
+float _PanicAccel;
+float _PanicBoostDuration;
+
+float3 LimitVec(float3 v, float maxLen)
 {
-    float3 q = floor(p * 1000.0);
-    uint h = (uint)(q.x * 374761393.0 + q.y * 668265263.0 + q.z * 2147483647.0);
-    h = (h ^ (h >> 13)) * 1274126177u;
-    h ^= (h >> 16);
-    return (h & 0x00FFFFFFu) / 16777216.0;
+    float m = length(v);
+    if (m > maxLen)
+        return v * (maxLen / m);
+    return v;
 }
 
-[numthreads(64, 1, 1)]
-void BuildInstances(uint3 id : SV_DispatchThreadID)
+struct SdfWallInfo
 {
-    uint i = id.x;
-    if (i >= _Count) return;
+    float sdf;
+    float3 gradDir;
+    float urgency;
+    int valid;
+};
 
-    float3 pos = _Positions[i].xyz;
-    float spin = Hash(pos + float3(0.37, 0.37, 0.37)) * 6.2831853;
-    float c = cos(spin);
-    float s = sin(spin);
-    // Match Unity Matrix4x4.TRS(pos, rotation, scale) — columns are scaled rotation + translation.
-    float3 col0 = float3(c, 0, -s) * _Scale;
-    float3 col1 = float3(0, 1, 0) * _Scale;
-    float3 col2 = float3(s, 0, c) * _Scale;
-    _Matrices[i] = float4x4(
-        float4(col0, 0),
-        float4(col1, 0),
-        float4(col2, 0),
-        float4(pos.x, pos.y, pos.z, 1)
-    );
+SdfWallInfo SampleSdfWall(float3 pos)
+{
+    SdfWallInfo w;
+    w.sdf = 0.0;
+    w.gradDir = float3(0, 0, 1);
+    w.urgency = 0.0;
+    w.valid = 0;
+
+    if (_UseSdfAtlas == 0)
+        return w;
+
+    w.sdf = SampleSdfAtlas(pos);
+    float3 grad = SampleSdfAtlasGradient(pos, _SdfGradientDelta);
+    float gradLen = length(grad);
+    if (gradLen < 1e-6)
+        return w;
+
+    w.gradDir = grad / gradLen;
+    w.valid = 1;
+
+    if (w.sdf >= _SdfAvoidRadius)
+        return w;
+
+    w.urgency = saturate((_SdfAvoidRadius - w.sdf) / max(_SdfAvoidRadius, 1e-4));
+    if (w.sdf <= 0.0)
+        w.urgency = 1.0;
+
+    return w;
 }
 
-// Placeholder for future boid simulation (reads/writes _Matrices or separate state).
+float3 SdfWallSteerForce(SdfWallInfo w)
+{
+    if (w.valid == 0 || w.urgency <= 0.0)
+        return float3(0, 0, 0);
+
+    float strength = _SdfAvoidWeight * w.urgency;
+    if (w.sdf <= 0.0)
+        strength = _SdfAvoidWeight * _SdfPenetrationForceMult + abs(w.sdf) * _SdfAvoidWeight * 2.0;
+
+    return w.gradDir * strength;
+}
+
+void SdfWallBrakeVelocity(SdfWallInfo w, inout float3 vel)
+{
+    if (w.valid == 0 || w.sdf > _SdfWallBrakeRadius)
+        return;
+
+    float speed = length(vel);
+    if (speed < 1e-6)
+        return;
+
+    float3 velDir = vel / speed;
+    float intoWall = -dot(velDir, w.gradDir);
+    if (intoWall <= 0.0)
+        return;
+
+    float proximity = saturate((_SdfWallBrakeRadius - w.sdf) / max(_SdfWallBrakeRadius, 1e-4));
+    float brake = intoWall * proximity * max(w.urgency, proximity) * _SdfWallBrakeStrength;
+
+    vel -= w.gradDir * min(0.0, dot(vel, w.gradDir));
+    vel *= max(0.0, 1.0 - brake);
+
+    if (w.sdf <= 0.0)
+        vel *= 0.15;
+}
+
+void SdfCorrectPosition(inout float3 pos)
+{
+    if (_UseSdfAtlas == 0)
+        return;
+
+    float sdf = SampleSdfAtlas(pos);
+    if (sdf >= _SdfMinClearance)
+        return;
+
+    float3 grad = SampleSdfAtlasGradient(pos, _SdfGradientDelta);
+    float gradLen = length(grad);
+    if (gradLen < 1e-6)
+        return;
+
+    float3 dir = grad / gradLen;
+    pos += dir * (_SdfMinClearance - sdf);
+}
+
+float3 ThreatAvoidanceForce(float3 pos)
+{
+    if (_ThreatCount == 0)
+        return float3(0, 0, 0);
+
+    float3 force = float3(0, 0, 0);
+    for (uint t = 0; t < _ThreatCount; t++)
+    {
+        float3 threatPos = _ThreatPositions[t].xyz;
+        float3 away = pos - threatPos;
+        float distSq = dot(away, away);
+        if (distSq < 1e-8)
+            continue;
+
+        float dist = sqrt(distSq);
+        if (dist >= _ThreatAvoidRadius)
+            continue;
+
+        float3 dir = away / dist;
+        float falloff = saturate((_ThreatAvoidRadius - dist) / max(_ThreatAvoidRadius, 1e-4));
+        force += dir * (_ThreatAvoidWeight * falloff);
+    }
+
+    return force;
+}
+
+float ThreatPanicProximity(float3 pos)
+{
+    if (_ThreatCount == 0 || _ThreatPanicRadius <= 1e-4)
+        return 0.0;
+
+    float proximity = 0.0;
+    for (uint t = 0; t < _ThreatCount; t++)
+    {
+        float3 threatPos = _ThreatPositions[t].xyz;
+        float distSq = dot(pos - threatPos, pos - threatPos);
+        if (distSq >= _ThreatPanicRadius * _ThreatPanicRadius)
+            continue;
+
+        float dist = sqrt(distSq);
+        proximity = max(proximity, 1.0 - dist / _ThreatPanicRadius);
+    }
+
+    return proximity;
+}
+
+void ApplySpeedLimits(
+    float3 velBefore,
+    float panicTimerIn,
+    float panicProximity,
+    inout float3 vel,
+    out float panicTimerOut)
+{
+    float panicTimer = panicTimerIn;
+
+    if (panicProximity > 0.0)
+        panicTimer = _PanicBoostDuration;
+    else
+        panicTimer = max(0.0, panicTimer - _DeltaTime);
+
+    float boostT = _PanicBoostDuration > 1e-4
+        ? saturate(panicTimer / _PanicBoostDuration)
+        : 0.0;
+    float panicBlend = max(panicProximity, boostT);
+    float targetMax = lerp(_MaxSpeed, _MaxSpeed * _PanicSpeedMult, panicBlend);
+    float accelLimit = lerp(_SpeedAccel, _PanicAccel, panicBlend);
+
+    float speed = length(vel);
+    float3 dir = speed > 1e-6 ? vel / speed
+        : length(velBefore) > 1e-6 ? normalize(velBefore)
+        : float3(0, 0, 1);
+
+    float newSpeed = speed;
+    if (speed < targetMax)
+        newSpeed = min(speed + accelLimit * _DeltaTime, targetMax);
+    else if (speed > targetMax)
+        newSpeed = max(speed - accelLimit * _DeltaTime, targetMax);
+
+    newSpeed = clamp(newSpeed, _MinSpeed, targetMax);
+    vel = dir * newSpeed;
+    panicTimerOut = panicTimer;
+}
+
 [numthreads(64, 1, 1)]
 void BoidUpdate(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= _Count) return;
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    float3 pos = _PositionsIn[i].xyz;
+    float3 vel = _VelocitiesIn[i].xyz;
+    float3 velBefore = vel;
+    float panicTimer = _VelocitiesIn[i].w;
+
+    float3 sep = float3(0, 0, 0);
+    float3 alignSum = float3(0, 0, 0);
+    float3 cohSum = float3(0, 0, 0);
+    uint neighborCount = 0;
+
+    for (uint j = 0; j < _Count; j++)
+    {
+        if (j == i)
+            continue;
+
+        float3 posJ = _PositionsIn[j].xyz;
+        float3 velJ = _VelocitiesIn[j].xyz;
+        float3 offset = pos - posJ;
+        float distSq = dot(offset, offset);
+        if (distSq < 1e-8 || distSq > _NeighborRadius * _NeighborRadius)
+            continue;
+
+        float dist = sqrt(distSq);
+        neighborCount++;
+
+        if (dist < _SeparationRadius)
+            sep += offset / (distSq);
+
+        alignSum += velJ;
+        cohSum += posJ;
+    }
+
+    float3 steer = float3(0, 0, 0);
+
+    if (neighborCount > 0)
+    {
+        float inv = 1.0 / (float)neighborCount;
+
+        float3 cent = cohSum * inv;
+        float3 toCenter = cent - pos;
+        float cohDist = length(toCenter);
+        float3 cohSteer = float3(0, 0, 0);
+        if (cohDist > 1e-6)
+        {
+            float3 cohDesired = (toCenter / cohDist) * _MaxSpeed;
+            cohSteer = cohDesired - vel;
+        }
+
+        float3 avgVel = alignSum * inv;
+        float avgSpeed = length(avgVel);
+        float3 alignSteer = float3(0, 0, 0);
+        if (avgSpeed > 1e-6)
+        {
+            float3 alignDesired = (avgVel / avgSpeed) * _MaxSpeed;
+            alignSteer = alignDesired - vel;
+        }
+
+        steer += LimitVec(sep, _MaxSteerForce) * _WeightSeparation;
+        steer += LimitVec(alignSteer, _MaxSteerForce) * _WeightAlignment;
+        steer += LimitVec(cohSteer, _MaxSteerForce) * _WeightCohesion;
+    }
+
+    SdfWallInfo wall = SampleSdfWall(pos);
+    float threatScale = wall.valid != 0
+        ? (1.0 - wall.urgency * _SdfThreatSuppress)
+        : 1.0;
+
+    steer += LimitVec(ThreatAvoidanceForce(pos) * threatScale, _MaxSteerForce);
+    steer = LimitVec(steer, _MaxSteerForce);
+    steer += LimitVec(SdfWallSteerForce(wall), _MaxSteerForce * 2.0);
+
+    vel += steer * _DeltaTime;
+    SdfWallBrakeVelocity(wall, vel);
+
+    float panicProximity = ThreatPanicProximity(pos) * threatScale;
+    ApplySpeedLimits(velBefore, panicTimer, panicProximity, vel, panicTimer);
+
+    pos += vel * _DeltaTime;
+    SdfCorrectPosition(pos);
+
+    _PositionsOut[i] = float4(pos, 1);
+    _VelocitiesOut[i] = float4(vel, panicTimer);
 }
