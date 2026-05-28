@@ -1,15 +1,31 @@
 #pragma kernel BoidUpdate
+#pragma kernel FishBuilder
+#pragma kernel BuildMatrices
 
 #include "Includes/SampleSdfAtlas.hlsl"
 
-StructuredBuffer<float4> _PositionsIn;
-StructuredBuffer<float4> _VelocitiesIn;
-RWStructuredBuffer<float4> _PositionsOut;
-RWStructuredBuffer<float4> _VelocitiesOut;
+#define BOID_STATE_UNLOADED 0
+#define BOID_STATE_LOADED   1
+#define BOID_STATE_CLAIMING 2
+
+static const float3 kParkedPosition = float3(0.0, 100.0, 0.0);
+
+RWStructuredBuffer<uint> _BoidState;
+RWStructuredBuffer<float4> _Positions;
+RWStructuredBuffer<float4> _Velocities;
+
+StructuredBuffer<float4> _SpawnPositions;
+StructuredBuffer<float4> _SpawnVelocities;
+RWStructuredBuffer<int> _SpawnRemaining;
+
+RWStructuredBuffer<float4x4> _InstanceMatrices;
 
 uint _Count;
 float _DeltaTime;
 int _UseSdfAtlas;
+
+float3 _PlayerPosition;
+float _DespawnRadius;
 
 float _NeighborRadius;
 float _SeparationRadius;
@@ -39,12 +55,92 @@ float _PanicSpeedMult;
 float _PanicAccel;
 float _PanicBoostDuration;
 
+float _FishScale;
+float3 _MeshSwimUp;
+float4 _MeshOrientationQuat;
+
 float3 LimitVec(float3 v, float maxLen)
 {
     float m = length(v);
     if (m > maxLen)
         return v * (maxLen / m);
     return v;
+}
+
+bool IsOutOfDespawnRange(float3 pos)
+{
+    float3 dif = pos - _PlayerPosition;
+    dif.y *= 1.8;
+    return length(dif) > _DespawnRadius;
+}
+
+float3x3 RotationMatrixFromLook(float3 forward, float3 upHint)
+{
+    float3 f = normalize(forward);
+    float3 u = length(upHint) > 1e-6 ? normalize(upHint) : float3(0.0, 1.0, 0.0);
+
+    if (abs(dot(f, u)) > 0.98)
+    {
+        float3 fallback = abs(f.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+        u = normalize(cross(f, fallback));
+    }
+
+    float3 r = normalize(cross(u, f));
+    u = cross(f, r);
+
+    float3x3 m;
+    m[0] = float3(r.x, u.x, f.x);
+    m[1] = float3(r.y, u.y, f.y);
+    m[2] = float3(r.z, u.z, f.z);
+    return m;
+}
+
+float3x3 QuatToMatrix(float4 q)
+{
+    float x = q.x;
+    float y = q.y;
+    float z = q.z;
+    float w = q.w;
+
+    float x2 = x + x;
+    float y2 = y + y;
+    float z2 = z + z;
+    float xx = x * x2;
+    float yy = y * y2;
+    float zz = z * z2;
+    float xy = x * y2;
+    float xz = x * z2;
+    float yz = y * z2;
+    float wx = w * x2;
+    float wy = w * y2;
+    float wz = w * z2;
+
+    float3x3 m;
+    m[0] = float3(1.0 - (yy + zz), xy + wz, xz - wy);
+    m[1] = float3(xy - wz, 1.0 - (xx + zz), yz + wx);
+    m[2] = float3(xz + wy, yz - wx, 1.0 - (xx + yy));
+    return m;
+}
+
+float4x4 BuildFishMatrix(float3 pos, float3 vel)
+{
+    float3 forward = length(vel) > 1e-6 ? normalize(vel) : float3(0.0, 0.0, 1.0);
+
+    // Match CPU: Quaternion swimRot = LookRotation(vel, meshSwimUp); rotation = swimRot * meshFix;
+    float3x3 swimRot = RotationMatrixFromLook(forward, _MeshSwimUp);
+    float3x3 meshFix = QuatToMatrix(_MeshOrientationQuat);
+    float3x3 rotation = mul(swimRot, meshFix);
+
+    float3 col0 = float3(rotation[0][0], rotation[1][0], rotation[2][0]) * _FishScale;
+    float3 col1 = float3(rotation[0][1], rotation[1][1], rotation[2][1]) * _FishScale;
+    float3 col2 = float3(rotation[0][2], rotation[1][2], rotation[2][2]) * _FishScale;
+
+    return float4x4(
+        col0.x, col1.x, col2.x, pos.x,
+        col0.y, col1.y, col2.y, pos.y,
+        col0.z, col1.z, col2.z, pos.z,
+        0.0,    0.0,    0.0,    1.0
+    );
 }
 
 struct SdfWallInfo
@@ -223,16 +319,74 @@ void ApplySpeedLimits(
 }
 
 [numthreads(64, 1, 1)]
+void FishBuilder(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    if (_BoidState[i] != BOID_STATE_UNLOADED)
+        return;
+
+    uint previousState;
+    InterlockedCompareExchange(_BoidState[i], BOID_STATE_CLAIMING, BOID_STATE_UNLOADED, previousState);
+    if (previousState != BOID_STATE_UNLOADED)
+        return;
+
+    int oldRemaining;
+    InterlockedAdd(_SpawnRemaining[0], -1, oldRemaining);
+    int spawnIdx = oldRemaining - 1;
+
+    if (spawnIdx < 0)
+    {
+        _BoidState[i] = BOID_STATE_UNLOADED;
+        return;
+    }
+
+    _Positions[i] = _SpawnPositions[spawnIdx];
+    _Velocities[i] = _SpawnVelocities[spawnIdx];
+    _BoidState[i] = BOID_STATE_LOADED;
+}
+
+[numthreads(64, 1, 1)]
+void BuildMatrices(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    float3 pos = _Positions[i].xyz;
+    float3 vel = _Velocities[i].xyz;
+    _InstanceMatrices[i] = BuildFishMatrix(pos, vel);
+}
+
+[numthreads(64, 1, 1)]
 void BoidUpdate(uint3 id : SV_DispatchThreadID)
 {
     uint i = id.x;
     if (i >= _Count)
         return;
 
-    float3 pos = _PositionsIn[i].xyz;
-    float3 vel = _VelocitiesIn[i].xyz;
+    uint state = _BoidState[i];
+    if (state == BOID_STATE_UNLOADED)
+    {
+        _Positions[i] = float4(kParkedPosition, 0.0);
+        _Velocities[i] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
+
+    float3 pos = _Positions[i].xyz;
+    float3 vel = _Velocities[i].xyz;
     float3 velBefore = vel;
-    float panicTimer = _VelocitiesIn[i].w;
+    float panicTimer = _Velocities[i].w;
+
+    if (IsOutOfDespawnRange(pos))
+    {
+        _BoidState[i] = BOID_STATE_UNLOADED;
+        _Positions[i] = float4(kParkedPosition, 0.0);
+        _Velocities[i] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
 
     float3 sep = float3(0, 0, 0);
     float3 alignSum = float3(0, 0, 0);
@@ -241,11 +395,11 @@ void BoidUpdate(uint3 id : SV_DispatchThreadID)
 
     for (uint j = 0; j < _Count; j++)
     {
-        if (j == i)
+        if (j == i || _BoidState[j] != BOID_STATE_LOADED)
             continue;
 
-        float3 posJ = _PositionsIn[j].xyz;
-        float3 velJ = _VelocitiesIn[j].xyz;
+        float3 posJ = _Positions[j].xyz;
+        float3 velJ = _Velocities[j].xyz;
         float3 offset = pos - posJ;
         float distSq = dot(offset, offset);
         if (distSq < 1e-8 || distSq > _NeighborRadius * _NeighborRadius)
@@ -309,6 +463,6 @@ void BoidUpdate(uint3 id : SV_DispatchThreadID)
     pos += vel * _DeltaTime;
     SdfCorrectPosition(pos);
 
-    _PositionsOut[i] = float4(pos, 1);
-    _VelocitiesOut[i] = float4(vel, panicTimer);
+    _Positions[i] = float4(pos, 1.0);
+    _Velocities[i] = float4(vel, panicTimer);
 }

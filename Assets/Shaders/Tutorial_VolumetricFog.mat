@@ -42,7 +42,7 @@ Material:
     - _NoiseTiling: 1
     - _StepSize: 3
     m_Colors:
-    - _Color: {r: 0.005384479, g: 0.103773594, b: 0.07270334, a: 1}
+    - _Color: {r: 0.0012014933, g: 0.084905684, b: 0.06146852, a: 1}
     - _LightContribution: {r: 0.16037738, g: 0.16037738, b: 0.16037738, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

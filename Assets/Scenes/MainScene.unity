@@ -332,10 +332,7 @@ MonoBehaviour:
   strayCutoff: 7
   logDrawCount: 1
   logInterval: 1
-  drawSpawnGizmos: 0
-  gizmoRadiusMultiplier: 1
-  maxGizmosDrawn: 256
-  turnOff: 1
+  turnOff: 0
 --- !u!4 &81440352
 Transform:
   m_ObjectHideFlags: 0
@@ -461,7 +458,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4161997751960109428, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7969223727007845047, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -1284,8 +1281,8 @@ MonoBehaviour:
   darkestDepth: -10
   fogMin: 0.015
   fogMax: 0.02
-  surfaceColor: {r: 0.16976683, g: 0.31682017, b: 0.3301887, a: 1}
-  deepColor: {r: 0.07058824, g: 0.11764706, b: 0.12156863, a: 1}
+  surfaceColor: {r: 0.12068351, g: 0.21680315, b: 0.2264151, a: 1}
+  deepColor: {r: 0, g: 0, b: 0, a: 1}
   setFog: 1
   debugLight: {fileID: 2124099354}
   playerTransform: {fileID: 765039362}
@@ -2052,7 +2049,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &832575518
 MonoBehaviour:
   m_ObjectHideFlags: 0
