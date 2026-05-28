@@ -1,0 +1,45 @@
+#pragma kernel BuildInstances
+#pragma kernel BoidUpdate
+
+StructuredBuffer<float4> _Positions;
+RWStructuredBuffer<float4x4> _Matrices;
+uint _Count;
+float _Scale;
+
+float Hash(float3 p)
+{
+    float3 q = floor(p * 1000.0);
+    uint h = (uint)(q.x * 374761393.0 + q.y * 668265263.0 + q.z * 2147483647.0);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= (h >> 16);
+    return (h & 0x00FFFFFFu) / 16777216.0;
+}
+
+[numthreads(64, 1, 1)]
+void BuildInstances(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count) return;
+
+    float3 pos = _Positions[i].xyz;
+    float spin = Hash(pos + float3(0.37, 0.37, 0.37)) * 6.2831853;
+    float c = cos(spin);
+    float s = sin(spin);
+    // Match Unity Matrix4x4.TRS(pos, rotation, scale) — columns are scaled rotation + translation.
+    float3 col0 = float3(c, 0, -s) * _Scale;
+    float3 col1 = float3(0, 1, 0) * _Scale;
+    float3 col2 = float3(s, 0, c) * _Scale;
+    _Matrices[i] = float4x4(
+        float4(col0, 0),
+        float4(col1, 0),
+        float4(col2, 0),
+        float4(pos.x, pos.y, pos.z, 1)
+    );
+}
+
+// Placeholder for future boid simulation (reads/writes _Matrices or separate state).
+[numthreads(64, 1, 1)]
+void BoidUpdate(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count) return;
+}

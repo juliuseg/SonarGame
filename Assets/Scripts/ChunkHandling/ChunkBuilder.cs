@@ -159,7 +159,7 @@ public class ChunkBuilder
                 if (!_chunkManager.TryGetChunk(coord, out var c) || c == null) return;
                 if (c.gameObject == null || c.gameObject.Equals(null)) return;
 
-                c.spawnPoints = spawnPoints;
+                c.spawnPoints = FilterSpawnPointsBelowWater(spawnPoints);
                 c.biomeMask = mask;
 
                 ApplyMeshToGameObject(c.gameObject, mesh);
@@ -314,12 +314,13 @@ public class ChunkBuilder
         public bool SdfDone;
     }
     
-    private static void PopulateInteriorSpawnPositions(
+    private void PopulateInteriorSpawnPositions(
         Chunk chunk,
         Vector3 chunkCenter,
         Vector3 voxelScale,
         float interiorSdfThreshold)
     {
+        float waterLevel = _chunkStreamingSettings.waterLevel;
         int sx = chunk.sdfDims.x;
         int sy = chunk.sdfDims.y;
         int sz = chunk.sdfDims.z;
@@ -331,10 +332,31 @@ public class ChunkBuilder
             if (chunk.GetVoxel(x, y, z) <= interiorSdfThreshold)
                 continue;
 
-            chunk.interiorSpawnPositions.Add(chunkCenter + new Vector3(
+            Vector3 worldPos = chunkCenter + new Vector3(
                 (x - sx * 0.5f + 0.5f) * voxelScale.x,
                 (y - sy * 0.5f + 0.5f) * voxelScale.y,
-                (z - sz * 0.5f + 0.5f) * voxelScale.z));
+                (z - sz * 0.5f + 0.5f) * voxelScale.z);
+
+            if (worldPos.y > waterLevel)
+                continue;
+
+            chunk.interiorSpawnPositions.Add(worldPos);
         }
+    }
+
+    private List<SpawnPoint> FilterSpawnPointsBelowWater(List<SpawnPoint> points)
+    {
+        if (points == null || points.Count == 0)
+            return points;
+
+        float waterLevel = _chunkStreamingSettings.waterLevel;
+        var filtered = new List<SpawnPoint>(points.Count);
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (points[i].positionWS.y <= waterLevel)
+                filtered.Add(points[i]);
+        }
+
+        return filtered;
     }
 }

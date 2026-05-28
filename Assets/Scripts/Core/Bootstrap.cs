@@ -28,7 +28,9 @@ public class Bootstrap : MonoBehaviour
     [Header("SDF Tests")]
     [SerializeField] private SDFAtlasTest sdfAtlasTest;
     [SerializeField] private ComputeShader sdfAtlasTestShader;
-    
+
+    [Header("Fish")]
+    [SerializeField] private FishSpawnSystem fishSpawnSystem;
     
     private ChunkStreamer _chunkStreamer;
     private SpawnManager _spawnManager;
@@ -67,12 +69,16 @@ public class Bootstrap : MonoBehaviour
         // SDF Tests
         if (sdfAtlasTest != null) 
             sdfAtlasTest.Init(chunkManager, sdfAtlas, mcSettings);
+
+        if (fishSpawnSystem != null)
+            fishSpawnSystem.Init(chunkManager, chunkStreamingSettings, chunkLoaderTarget);
     }
 
     void Update()
     {
         _chunkStreamer.Tick();
         _spawnManager.Tick();
+        if (fishSpawnSystem != null) fishSpawnSystem.Tick();
         
         _sdfAtlas.FlushLookup();
     }

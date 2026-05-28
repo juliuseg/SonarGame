@@ -257,6 +257,68 @@ Transform:
   m_Children: []
   m_Father: {fileID: 363364553}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &81440350
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 81440352}
+  - component: {fileID: 81440351}
+  m_Layer: 0
+  m_Name: FishSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &81440351
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 81440350}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1670307a4a6194ccd9f9c73258dea890, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FishSpawnSystem
+  fishMesh: {fileID: 4855250017748832557, guid: 1b986e5682bf547baa9bae4dc905d482, type: 3}
+  fishMaterials:
+  - {fileID: 2100000, guid: f04df374a9ea04de1b1aaaaa0277dc5c, type: 2}
+  - {fileID: 2100000, guid: 74ea2671340e24ed896bb02b79c19207, type: 2}
+  - {fileID: 2100000, guid: 3b5f033c1c6704925a02ae7d5d795e41, type: 2}
+  fishCompute: {fileID: 7200000, guid: 04a76206adf754cbca2279f36a9da134, type: 3}
+  maxInstances: 5000
+  fishScale: 20
+  schoolSize: 20
+  schoolCenterSeparation: 10
+  schoolMemberSpread: 1.5
+  strayPercent: 0.15
+  strayCutoff: 7
+  logDrawCount: 1
+  logInterval: 1
+  drawSpawnGizmos: 0
+  gizmoRadiusMultiplier: 1
+  maxGizmosDrawn: 256
+--- !u!4 &81440352
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 81440350}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.49966, y: -50.01839, z: 31.39671}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &133126661
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -858,7 +920,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &363364553
 Transform:
   m_ObjectHideFlags: 0
@@ -1065,6 +1127,10 @@ PrefabInstance:
       propertyPath: sdfVisualizer
       value: 
       objectReference: {fileID: 34377136}
+    - target: {fileID: 7875504794590251432, guid: 570060f68caa042529407a5b291959fe, type: 3}
+      propertyPath: fishSpawnSystem
+      value: 
+      objectReference: {fileID: 81440351}
     - target: {fileID: 7875504794590251432, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: chunkLoaderTarget
       value: 
@@ -4015,3 +4081,4 @@ SceneRoots:
   - {fileID: 133126661}
   - {fileID: 1331636107}
   - {fileID: 363364553}
+  - {fileID: 81440352}
