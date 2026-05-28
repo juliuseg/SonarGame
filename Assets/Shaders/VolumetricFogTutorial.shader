@@ -86,7 +86,6 @@ Shader "Tutorial/VolumetricFog"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                float4 col      = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, IN.texcoord);
                 float  depth    = SampleSceneDepth(IN.texcoord);
                 float3 worldPos = ComputeWorldSpacePosition(IN.texcoord, depth, UNITY_MATRIX_I_VP);
 
@@ -95,7 +94,7 @@ Shader "Tutorial/VolumetricFog"
                 float  viewLength = length(viewDir);
                 float3 rayDir     = normalize(viewDir);
 
-                float2 pixelCoords   = IN.texcoord * _BlitTexture_TexelSize.zw;
+                float2 pixelCoords   = IN.texcoord * _ScreenParams.xy;
                 float  distLimit     = min(viewLength, _MaxDistance);
                 float  distTravelled = InterleavedGradientNoise(pixelCoords, (int)(_Time.y / max(HALF_EPS, unity_DeltaTime.x))) * _NoiseOffset;
                 float  transmittance = 1;
@@ -145,7 +144,7 @@ Shader "Tutorial/VolumetricFog"
                     distTravelled += _StepSize;
                 }
 
-                return lerp(col, fogCol, 1.0 - saturate(transmittance));
+                return half4(fogCol.rgb, saturate(transmittance));
             }
             ENDHLSL
         }
