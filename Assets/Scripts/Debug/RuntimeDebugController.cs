@@ -138,6 +138,16 @@ public class RuntimeDebugController : MonoBehaviour
             Cursor.lockState = locked ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = locked;
         }
+
+        if (Cursor.lockState != CursorLockMode.Locked)
+        {
+            var mouse = Mouse.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
+        }
     }
 
     void OnValidate()

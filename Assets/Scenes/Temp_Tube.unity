@@ -540,7 +540,7 @@ MonoBehaviour:
   startTangent: {x: 0, y: 2, z: 0}
   endTangent: {x: -2, y: 0, z: 0}
   radius: 0.3
-  sides: 6
+  sides: 8
   baseSegments: 5
   segmentsPerUnit: 2
   maxTangentFraction: 0.8

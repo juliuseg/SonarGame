@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Crystal
   m_EditorClassIdentifier: Assembly-CSharp::SpawnNode
   prefab: {fileID: 4590391592870051531, guid: a6953a2d38f4f4a0ea611ef52eb45652, type: 3}
-  scale: 1
+  scale: 1.3
   scaleOffset: 0
   verticalBias: 0
   yOffset: 0

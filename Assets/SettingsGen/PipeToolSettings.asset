@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be8fa6319f5a54a4396261400c43c976, type: 3}
+  m_Name: PipeToolSettings
+  m_EditorClassIdentifier: Assembly-CSharp::PipeToolSettings
+  pointerPrefab: {fileID: 1212215242805220524, guid: 13565e94ff7104d5193c9f337f4dba56, type: 3}
+  pointerWorldScale: 0.25
+  maxRayDistance: 200
+  previewEndDistance: 4
+  radius: 0.15
+  sides: 8
+  baseSegments: 5
+  segmentsPerUnit: 4
+  maxTangentFraction: 0.8
+  material: {fileID: 2100000, guid: f4aed5967c37c4a2bb0207b5a54fd462, type: 2}
+  material_error: {fileID: 2100000, guid: 6e5f67a27dcdd4835893c4b747fd1b7a, type: 2}
+  material_placed: {fileID: 2100000, guid: 4538cf75ab1984f2a8e51108edc20eb7, type: 2}
+  maxBuildableLenght: 100
+  debugRegenerateAllPipes: 0

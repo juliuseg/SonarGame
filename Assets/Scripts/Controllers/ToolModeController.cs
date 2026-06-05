@@ -7,15 +7,19 @@ public class ToolModeController : MonoBehaviour
     {
         None,
         Placement,
-        Terraform
+        Terraform,
+        Pipe
     }
 
     [SerializeField] private TerraformToolSettings terraformSettings;
     [SerializeField] private PlacementToolSettings placementSettings;
+    [SerializeField] private PipeToolSettings pipeSettings;
+    [SerializeField] private Transform pipeParent;
     [SerializeField] private Camera targetCamera;
 
     TerraformToolHandler _terraformHandler;
     PlacementToolHandler _placementHandler;
+    PipeToolHandler _pipeHandler;
 
     ToolMode _mode = ToolMode.None;
     bool _freeCameraActive;
@@ -27,6 +31,7 @@ public class ToolModeController : MonoBehaviour
 
         _terraformHandler = new TerraformToolHandler(chunkStreamer, terraformSettings, targetCamera);
         _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, chunkStreamer.ChunkManager);
+        _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent);
     }
 
     public void SetFreeCameraActive(bool active)
@@ -39,6 +44,9 @@ public class ToolModeController : MonoBehaviour
 
     void Update()
     {
+        if (_pipeHandler != null)
+            _pipeHandler.UpdatePlacedPipes();
+
         if (!_freeCameraActive)
             return;
 
@@ -51,6 +59,9 @@ public class ToolModeController : MonoBehaviour
                 break;
             case ToolMode.Placement:
                 _placementHandler.Tick();
+                break;
+            case ToolMode.Pipe:
+                _pipeHandler.Tick();
                 break;
         }
     }
@@ -67,8 +78,9 @@ public class ToolModeController : MonoBehaviour
             SetMode(ToolMode.Placement);
         else if (keyboard.digit3Key.wasPressedThisFrame)
             SetMode(ToolMode.Terraform);
-        else if (keyboard.digit4Key.wasPressedThisFrame
-                 || keyboard.digit5Key.wasPressedThisFrame
+        else if (keyboard.digit4Key.wasPressedThisFrame)
+            SetMode(ToolMode.Pipe);
+        else if (keyboard.digit5Key.wasPressedThisFrame
                  || keyboard.digit6Key.wasPressedThisFrame
                  || keyboard.digit7Key.wasPressedThisFrame
                  || keyboard.digit8Key.wasPressedThisFrame
@@ -83,6 +95,7 @@ public class ToolModeController : MonoBehaviour
 
         _terraformHandler.Disable();
         _placementHandler.Disable();
+        _pipeHandler.Disable();
 
         _mode = mode;
 
@@ -93,6 +106,9 @@ public class ToolModeController : MonoBehaviour
                 break;
             case ToolMode.Placement:
                 _placementHandler.Enable();
+                break;
+            case ToolMode.Pipe:
+                _pipeHandler.Enable();
                 break;
         }
     }
