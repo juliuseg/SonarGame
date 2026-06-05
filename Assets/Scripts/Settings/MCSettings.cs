@@ -32,5 +32,10 @@ public class MCSettings : ScriptableObject
     [Header("SDF Settings")]
     public int halo = 1;
 
+    [Header("Spawn Points")]
+    public float spawnBaseChance = 0.1f;
+    public float spawnBaseArea = 0.3f;
+    public float spawnNormalThreshold = 0.6f;
+
 }
 

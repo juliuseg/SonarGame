@@ -351,7 +351,7 @@ public class RuntimeDebugController : MonoBehaviour
             _appliedTargetFrameRate = targetFrameRate;
         }
 
-        if (volumetricFogFeature != null && volumetricFog != _appliedVolumetricFog)
+        if (volumetricFogFeature != null)
             volumetricFogFeature.SetActive(volumetricFog);
         _appliedVolumetricFog = volumetricFog;
     }

@@ -15,6 +15,10 @@ float4x4 _Transform;
 float _IsoLevel;
 uint3 _ChunkDims;
 
+float _SpawnBaseChance;
+float _SpawnBaseArea;
+float _SpawnNormalThreshold;
+
 static const float3 UP_VECTOR = float3(0, 1, 0);
 
 static const int3 cornerOffsets[8] = {
@@ -52,19 +56,12 @@ void AppendTriangle(float3 pos, float3 pos1, float3 pos2, bool terrainEditAll)
     float3 normal = normalize(cross(pos1 - pos, pos2 - pos));
     float area = 0.5 * length(cross(pos1 - pos, pos2 - pos));
 
-    // normalize area around expected average (0.3)
-    // base 2% chance at 0.3 area, scales linearly
-    float baseArea = 0.3;
-    float baseChance = 0.1;
-    float chance = baseChance * (area / baseArea);
-
-    // clamp to max reasonable probability (avoid 100%)
+    float chance = _SpawnBaseChance * (area / max(_SpawnBaseArea, 1e-6));
     chance = saturate(chance);
 
-    // pseudo-random based on triangle center
     float rnd = frac(sin(dot(c, float3(12.9898, 78.233, 45.164))) * 43758.5453);
 
-    if (rnd < chance && dot(normal, UP_VECTOR) > 0.6) // Add also that the normal dot vector UP_VECTOR i define in scope, is more than 0.5.
+    if (rnd < chance && dot(normal, UP_VECTOR) > _SpawnNormalThreshold)
     {
         SpawnPoint s;
         s.positionWS = pos;     // or use c if you prefer center

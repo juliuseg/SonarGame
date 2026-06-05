@@ -34,3 +34,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 499fa23d7cd544f0b897e0052be2757f, type: 2}
   - {fileID: 11400000, guid: f97017416c19a42239bf77ad1f3718eb, type: 2}
   halo: 8
+  spawnBaseChance: 0.5
+  spawnBaseArea: 0.3
+  spawnNormalThreshold: 0.6

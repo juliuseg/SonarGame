@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::InstancingMesh
   mesh: {fileID: -2386649039575133238, guid: a8c35ca4b95a03d4eb5ed75ac4507517, type: 3}
   material: {fileID: 2100000, guid: d9b8a95c481ca4f3c8b456ddbfdf63a2, type: 2}
-  scale: 3.32
+  scale: 2.5
   scaleOffset: 0.96
   verticalBias: 0.581
   yOffset: -0.05
-  probability: 0.49
+  probability: 0.6

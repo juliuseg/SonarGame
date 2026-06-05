@@ -170,6 +170,10 @@ public class MCBaker
             genShader.SetFloat("_BiomeDisplacementStrength", _settings.biomeDisplacementStrength);
             genShader.SetFloat("_BiomeDisplacementScale", _settings.biomeDisplacementScale);
 
+            genShader.SetFloat("_SpawnBaseChance", _settings.spawnBaseChance);
+            genShader.SetFloat("_SpawnBaseArea", _settings.spawnBaseArea);
+            genShader.SetFloat("_SpawnNormalThreshold", _settings.spawnNormalThreshold);
+
             // dispatch terrain
             genShader.GetKernelThreadGroupSizes(kMain, out uint tgX, out uint tgY, out uint tgZ);
             int dx = Mathf.CeilToInt(_settings.chunkDims.x / (float)tgX);

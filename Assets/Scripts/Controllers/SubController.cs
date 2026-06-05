@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class FPSController : MonoBehaviour
+public class SubController : MonoBehaviour
 {
     public float moveForce = 10f;
     public float turnForce = 0.1f;
@@ -16,6 +16,7 @@ public class FPSController : MonoBehaviour
     private InputAction forwardAction;
     
     private Rigidbody rb;
+    public Rigidbody Rigidbody => rb;
 
     [SerializeField] private CamSwitcher camSwitcher;
     
