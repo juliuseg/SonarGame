@@ -97,3 +97,6 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Render pipeline as package:
+/Packages/com.unity.render-pipelines.universal@13e5115b98bf/

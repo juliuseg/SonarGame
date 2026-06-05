@@ -29,10 +29,15 @@ public class EnviormentController : MonoBehaviour
         {
             float playerHeight = playerTransform.position.y;
             float depthRatio = Mathf.Clamp01((waterHeight - playerHeight) / (waterHeight - darkestDepth));
+            Color fogColor = Color.Lerp(surfaceColor, deepColor, depthRatio);
             RenderSettings.fog = true;
             RenderSettings.fogDensity = Mathf.Lerp(fogMin, fogMax, depthRatio);
-            RenderSettings.fogColor = Color.Lerp(surfaceColor, deepColor, depthRatio);
+            RenderSettings.fogColor = fogColor;
             debugLight.SetActive(false);
+            
+            Camera.main.backgroundColor = fogColor;
+            
+            
         } else {
             RenderSettings.fog = false;
             debugLight.SetActive(true);

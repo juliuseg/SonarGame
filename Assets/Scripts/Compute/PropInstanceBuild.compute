@@ -1,0 +1,149 @@
+#pragma kernel BuildPropMatrices
+
+struct SpawnPoint
+{
+    float4 positionWS;
+    float4 normalWS;
+};
+
+StructuredBuffer<SpawnPoint> _SpawnPoints;
+RWStructuredBuffer<float4x4> _InstanceMatrices;
+
+float _Scale;
+float _ScaleOffset;
+float _VerticalBias;
+float _YOffset;
+uint _Count;
+
+float Hash(float3 p)
+{
+    int xi = (int)floor(p.x * 1000.0);
+    int yi = (int)floor(p.y * 1000.0);
+    int zi = (int)floor(p.z * 1000.0);
+
+    uint h = (uint)(xi * 374761393 + yi * 668265263 + zi * 2147483647);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= (h >> 16);
+    return (h & 0x00FFFFFFu) / 16777216.0;
+}
+
+float4 QuatFromAxisAngle(float3 axis, float angleRad)
+{
+    axis = normalize(axis);
+    float half = angleRad * 0.5;
+    float s = sin(half);
+    return float4(axis * s, cos(half));
+}
+
+float3 RotateVectorByQuat(float4 q, float3 v)
+{
+    float3 qvec = q.xyz;
+    float3 crossQv = cross(qvec, v);
+    return v + (crossQv * q.w + cross(qvec, crossQv)) * 2.0;
+}
+
+float3 SlerpDirection(float3 from, float3 to, float t)
+{
+    from = normalize(from);
+    to = normalize(to);
+
+    float d = dot(from, to);
+    if (d >= 1.0 - 1e-6)
+        return from;
+    if (d <= -1.0 + 1e-6)
+    {
+        // Match Unity Vector3.Slerp when directions are opposite.
+        float3 axis = cross(from, abs(from.z) > 0.999f ? float3(1.0, 0.0, 0.0) : float3(0.0, 0.0, 1.0));
+        axis = normalize(axis);
+        return RotateVectorByQuat(QuatFromAxisAngle(axis, t * 3.14159265359), from);
+    }
+
+    float theta = acos(clamp(d, -1.0, 1.0));
+    float sinTheta = sin(theta);
+    float wFrom = sin((1.0 - t) * theta) / sinTheta;
+    float wTo = sin(t * theta) / sinTheta;
+    return normalize(from * wFrom + to * wTo);
+}
+
+float4 QuatFromTo(float3 from, float3 to)
+{
+    from = normalize(from);
+    to = normalize(to);
+    float d = dot(from, to);
+
+    if (d >= 1.0 - 1e-6)
+        return float4(0.0, 0.0, 0.0, 1.0);
+    if (d <= -1.0 + 1e-6)
+    {
+        // Match Unity's Quaternion.FromToRotation fallback axis.
+        float3 axis = cross(from, abs(from.z) > 0.999f ? float3(1.0, 0.0, 0.0) : float3(0.0, 0.0, 1.0));
+        return QuatFromAxisAngle(axis, 3.14159265359);
+    }
+
+    float3 axis = cross(from, to);
+    float w = 1.0 + d;
+    return normalize(float4(axis, w));
+}
+
+float4 QuatMul(float4 a, float4 b)
+{
+    return float4(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z);
+}
+
+float4x4 MatrixFromQuatTranslationScale(float4 q, float3 translation, float scale)
+{
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    float x2 = x + x, y2 = y + y, z2 = z + z;
+    float xx = x * x2, yy = y * y2, zz = z * z2;
+    float xy = x * y2, xz = x * z2, yz = y * z2;
+    float wx = w * x2, wy = w * y2, wz = w * z2;
+
+    float3x3 rot;
+    rot[0][0] = 1.0 - (yy + zz); rot[0][1] = xy + wz;       rot[0][2] = xz - wy;
+    rot[1][0] = xy - wz;       rot[1][1] = 1.0 - (xx + zz); rot[1][2] = yz + wx;
+    rot[2][0] = xz + wy;       rot[2][1] = yz - wx;       rot[2][2] = 1.0 - (xx + yy);
+
+    float3 col0 = float3(rot[0][0], rot[1][0], rot[2][0]) * scale;
+    float3 col1 = float3(rot[0][1], rot[1][1], rot[2][1]) * scale;
+    float3 col2 = float3(rot[0][2], rot[1][2], rot[2][2]) * scale;
+
+    return float4x4(
+        col0.x, col1.x, col2.x, translation.x,
+        col0.y, col1.y, col2.y, translation.y,
+        col0.z, col1.z, col2.z, translation.z,
+        0.0,    0.0,    0.0,    1.0);
+}
+
+[numthreads(64, 1, 1)]
+void BuildPropMatrices(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    SpawnPoint sp = _SpawnPoints[i];
+    float3 pos = sp.positionWS.xyz;
+    float3 normal = sp.normalWS.xyz;
+
+    if (dot(normal, normal) < 1e-6)
+        normal = float3(0.0, 1.0, 0.0);
+    else
+        normal = normalize(normal);
+
+    float h = Hash(pos);
+    float scale = max(_Scale + (h * 2.0 - 1.0) * _ScaleOffset, 0.01);
+
+    float3 alignedUp = normalize(SlerpDirection(normal, float3(0.0, 1.0, 0.0), _VerticalBias));
+    float spin = Hash(pos + float3(0.37, 0.37, 0.37)) * 360.0;
+
+    float4 alignQuat = QuatFromTo(float3(0.0, 1.0, 0.0), alignedUp);
+    float4 spinQuat = QuatFromAxisAngle(alignedUp, spin * 0.01745329252);
+    float4 rotation = QuatMul(spinQuat, alignQuat);
+
+    float3 worldPos = pos + alignedUp * _YOffset;
+    _InstanceMatrices[i] = MatrixFromQuatTranslationScale(rotation, worldPos, scale);
+}

@@ -8,25 +8,15 @@ public class ChunkStreamer
     private Transform _target; // defaults to this.transform
     
     private ChunkStreamingSettings _chunkStreamingSettings;
-    
-    private bool reloadTerrain = false;  // IMPLEMENT THIS AT SOME POINT...
-
-
 
     private readonly ChunkManager _chunkManager;
-    
     private ChunkBuilder _chunkBuilder;
-    
-    
-    
+
     private readonly Queue<Vector3Int> _buildQueue = new();
-    private readonly HashSet<Vector3Int> _pending = new(); // enqueued or building
-
-
+    private readonly HashSet<Vector3Int> _pending = new();
     private readonly HashSet<Vector3Int> _dirty = new();
     private readonly List<Vector3Int> _unloadScratch = new();
-    
-    
+
     public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkStreamingSettings chunkStreamingSettings, Transform target)
     {
         _chunkBuilder = chunkBuilder;
@@ -36,19 +26,18 @@ public class ChunkStreamer
 
         _chunkBuilder.OnChunkReady += OnChunkReady;
     }
-    
+
+    public void RequestReload()
+    {
+        _chunkBuilder.CancelAllBuilds();
+        _chunkManager.Clear();
+        _buildQueue.Clear();
+        _pending.Clear();
+        _dirty.Clear();
+    }
 
     public void Tick()
     {
-
-        if (reloadTerrain)
-        {
-            reloadTerrain = false;
-            _chunkManager.Clear();
-            _buildQueue.Clear();
-            _pending.Clear();
-            _dirty.Clear();
-        }
 
         Vector3 chunkSize = _chunkManager.GetChunkSize();
         Vector3Int center = _chunkManager.WorldToChunk(_target.position);

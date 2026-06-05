@@ -1,116 +1,93 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 public class SpawnManager
 {
-    private readonly ChunkManager _chunkManager;
-    private readonly MCSettings _mcSettings;
-    private readonly ChunkStreamingSettings _chunkStreamingSettings;
-    private readonly Transform _target;
+    readonly ChunkManager _chunkManager;
+    readonly MCSettings _mcSettings;
+    readonly ChunkStreamingSettings _chunkStreamingSettings;
+    readonly Transform _target;
+    readonly PropInstanceBaker _baker;
+    readonly MaterialPropertyBlock _propertyBlock = new();
+
+    public bool Enabled { get; set; } = true;
 
     public SpawnManager(
         ChunkManager chunkManager,
         MCSettings mcSettings,
         ChunkStreamingSettings chunkStreamingSettings,
-        Transform target)
+        Transform target,
+        ComputeShader propBuildShader)
     {
         _chunkManager = chunkManager;
         _mcSettings = mcSettings;
         _chunkStreamingSettings = chunkStreamingSettings;
         _target = target;
+        _baker = new PropInstanceBaker(propBuildShader, mcSettings, chunkManager);
+    }
+
+    public void HandleChunkReady(Vector3Int coord)
+    {
+        if (!_chunkManager.TryGetChunk(coord, out var chunk))
+            return;
+
+        chunk.ReleasePropBatches();
+        chunk.propBatches = _baker.Bake(coord, chunk);
+    }
+
+    public void Dispose()
+    {
+        _baker.Dispose();
     }
 
     public void Tick()
     {
-        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
-        List<SpawnPoint>[] allPoints = CollectSpawnPoints(radius * 0.5f);
-        DistributeAndDraw(allPoints);
+        if (!Enabled)
+            return;
+
+        Profiler.BeginSample("SpawnManager.Tick");
+        try
+        {
+            float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
+            DrawVisibleChunks(radius * 0.75f);
+        }
+        finally
+        {
+            Profiler.EndSample();
+        }
     }
 
-    // ---- Spawn point collection ----
-
-    private List<SpawnPoint>[] CollectSpawnPoints(float radius)
+    void DrawVisibleChunks(float radius)
     {
-        int biomeCount = _mcSettings.biomeSettings.Length;
-        List<SpawnPoint>[] allPoints = new List<SpawnPoint>[biomeCount];
-        for (int i = 0; i < biomeCount; i++)
-            allPoints[i] = new List<SpawnPoint>();
-
-        foreach (var kvp in _chunkManager.chunks)
+        Profiler.BeginSample("SpawnManager.DrawVisibleChunks");
+        try
         {
-            Vector3 worldCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
-            if (ChunkMath.IsOutOfRange(_target.position, worldCenter, radius)) continue;
-
-            var chunk = kvp.Value;
-            if (chunk.spawnPoints == null || chunk.spawnPoints.Count == 0) continue;
-
-            foreach (var biomeIndex in chunk.GetBiomeMaskList())
+            foreach (var kvp in _chunkManager.chunks)
             {
-                if (biomeIndex < 0 || biomeIndex >= biomeCount) continue;
-                allPoints[biomeIndex].AddRange(chunk.spawnPoints);
+                Vector3 worldCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
+                if (ChunkMath.IsOutOfRange(_target.position, worldCenter, radius))
+                    continue;
+
+                var batches = kvp.Value.propBatches;
+                if (batches == null || batches.Count == 0)
+                    continue;
+
+                Profiler.BeginSample("SpawnManager.DrawMeshInstancedIndirect");
+                try
+                {
+                    for (int i = 0; i < batches.Count; i++)
+                        batches[i].Draw(_propertyBlock);
+                }
+                finally
+                {
+                    Profiler.EndSample();
+                }
             }
         }
-
-        return allPoints;
-    }
-
-    // ---- Distribution ----
-
-    private void DistributeAndDraw(List<SpawnPoint>[] allPoints)
-    {
-        for (int i = 0; i < _mcSettings.biomeSettings.Length; i++)
+        finally
         {
-            List<InstancingMesh> instancingMeshes = _mcSettings.biomeSettings[i].instancingMeshes;
-
-            var probs = new float[instancingMeshes.Count];
-            for (int j = 0; j < instancingMeshes.Count; j++)
-                probs[j] = instancingMeshes[j].probability;
-
-            var lists = SpawnDistributor.Distribute(allPoints[i], probs, i);
-
-            for (int j = 0; j < lists.Count; j++)
-                DrawInstanced(lists[j], instancingMeshes[j]);
-
-            // TODO: ore spawning bucket goes here
+            Profiler.EndSample();
         }
-    }
-
-    // ---- Instancing ----
-
-    private void DrawInstanced(List<SpawnPoint> spawnPoints, InstancingMesh instancingMesh)
-    {
-        if (instancingMesh == null || instancingMesh.material == null) return;
-        if (spawnPoints.Count == 0) return;
-
-        int count = spawnPoints.Count;
-        Matrix4x4[] matrices = new Matrix4x4[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            Vector3 pos = spawnPoints[i].positionWS;
-            Vector3 normal = spawnPoints[i].normalWS;
-
-            if (normal.sqrMagnitude < 1e-6f)
-                normal = Vector3.up;
-            else
-                normal.Normalize();
-
-            float scale = instancingMesh.scale + (ChunkMath.Hash(pos) * 2f - 1f) * instancingMesh.scaleOffset;
-            scale = Mathf.Max(scale, 0.01f);
-
-            Vector3 alignedUp = Vector3.Slerp(normal, Vector3.up, instancingMesh.verticalBias).normalized;
-
-            Quaternion align = Quaternion.FromToRotation(Vector3.up, alignedUp);
-            float spin = ChunkMath.Hash(pos + Vector3.one * 0.37f) * 360f;
-            Quaternion rotation = Quaternion.AngleAxis(spin, alignedUp) * align;
-
-            matrices[i] = Matrix4x4.TRS(
-                pos + alignedUp * instancingMesh.yOffset,
-                rotation,
-                Vector3.one * scale
-            );
-        }
-
-        Graphics.DrawMeshInstanced(instancingMesh.mesh, 0, instancingMesh.material, matrices, count);
     }
 }

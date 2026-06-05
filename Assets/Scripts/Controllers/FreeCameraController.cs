@@ -12,9 +12,6 @@ public class FreeCameraController : MonoBehaviour
     public float mouseSensitivity = 2f;
     public bool lockCursor = true;
 
-    [Header("Performance Settings")]
-    public int targetFrameRate = 60;
-    public int vSyncCount = 1;
 
     public Light moveFreeLight;
 
@@ -33,8 +30,7 @@ public class FreeCameraController : MonoBehaviour
         }
 
 
-        Application.targetFrameRate = targetFrameRate;
-        QualitySettings.vSyncCount = vSyncCount;
+        QualitySettings.vSyncCount = 0;
     }
 
     public void resetRots (){

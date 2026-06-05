@@ -89,6 +89,8 @@ public class ChunkManager
                 chunk.interiorSpawnPositions.Clear();
                 chunk.interiorSpawnPositions = null;
             }
+            chunk.ReleasePropBatches();
+            chunk.propBatches = null;
             _atlas?.FreeSlot(coord);
             _chunks.Remove(coord);
         }

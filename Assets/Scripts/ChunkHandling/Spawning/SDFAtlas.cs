@@ -85,6 +85,14 @@ public class SDFAtlas : System.IDisposable
 
     public bool TryGetSlot(Vector3Int coord, out int slot) => _coordToSlot.TryGetValue(coord, out slot);
 
+    public void ClearAll()
+    {
+        var coords = new List<Vector3Int>(_coordToSlot.Keys);
+        foreach (var coord in coords)
+            FreeSlot(coord);
+        _lookupDirty = true;
+    }
+
     public void Dispose()
     {
         AtlasBuffer?.Release();

@@ -44,6 +44,10 @@ public class ChunkBuilder
         _atlas = atlas;
     }
 
+    public bool GenerateMesh { get; set; } = true;
+    public bool GenerateSdf { get; set; } = true;
+    public bool GenerateColliders { get; set; } = true;
+
     // ---- Public API ----
 
     /// <summary>
@@ -55,28 +59,46 @@ public class ChunkBuilder
         if (!_buildStates.TryGetValue(coord, out var bstate))
         {
             bstate = RegisterBuildState(coord);
-            EnsureGameObjectExists(coord, chunk);
+            if (GenerateMesh)
+                EnsureGameObjectExists(coord, chunk);
         }
 
         Vector3 centerWorld = _chunkManager.ChunkCenterWorld(coord);
         float chunkHalfHeight = _chunkManager.GetChunkSize().y * 0.5f;
         bool underwater = centerWorld.y - chunkHalfHeight < _chunkStreamingSettings.waterLevel;
 
-        if (underwater)
+        if (GenerateMesh)
         {
-            if (!bstate.MeshReadbackQueued)
-                TryQueueMeshReadback(coord, chunk, bstate, centerWorld);
+            if (underwater)
+            {
+                if (!bstate.MeshReadbackQueued)
+                    TryQueueMeshReadback(coord, chunk, bstate, centerWorld);
+            }
+            else if (!bstate.MeshDone)
+            {
+                HandleAboveWaterChunk(coord, chunk, bstate);
+            }
         }
         else if (!bstate.MeshDone)
         {
-            HandleAboveWaterChunk(coord, chunk, bstate);
+            bstate.MeshDone = true;
+            TryFinalizeChunk(coord, bstate);
         }
 
-        if (!bstate.SdfReadbackQueued)
-            TryQueueSdfReadback(coord, bstate, centerWorld);
+        if (GenerateSdf)
+        {
+            if (!bstate.SdfReadbackQueued)
+                TryQueueSdfReadback(coord, bstate, centerWorld);
+        }
+        else if (!bstate.SdfDone)
+        {
+            bstate.SdfDone = true;
+            TryFinalizeChunk(coord, bstate);
+        }
 
-        bool meshReady = bstate.MeshDone || bstate.MeshReadbackQueued;
-        return bstate.SdfReadbackQueued && meshReady;
+        bool meshReady = !GenerateMesh || bstate.MeshDone || bstate.MeshReadbackQueued;
+        bool sdfReady = !GenerateSdf || bstate.SdfReadbackQueued;
+        return meshReady && sdfReady;
     }
 
     private bool TryBeginReadback()
@@ -91,12 +113,26 @@ public class ChunkBuilder
 
     public void CancelBuild(Vector3Int coord) => _buildStates.Remove(coord);
 
+    public void CancelAllBuilds()
+    {
+        _buildStates.Clear();
+        lock (_pendingCollidersLock)
+            _pendingColliders.Clear();
+    }
+
     private bool IsBuildStillValid(Vector3Int coord, BuildState bstate) =>
         _buildStates.TryGetValue(coord, out var st) && ReferenceEquals(st, bstate)
         && _chunkManager.TryGetChunk(coord, out _);
 
     public void FlushPendingColliders()
     {
+        if (!GenerateColliders)
+        {
+            lock (_pendingCollidersLock)
+                _pendingColliders.Clear();
+            return;
+        }
+
         lock (_pendingCollidersLock)
         {
             foreach (var pending in _pendingColliders)
@@ -105,6 +141,37 @@ public class ChunkBuilder
                     pending.Collider.sharedMesh = pending.Mesh;
             }
             _pendingColliders.Clear();
+        }
+    }
+
+    public void ApplyCollidersToLoadedChunks()
+    {
+        lock (_pendingCollidersLock)
+            _pendingColliders.Clear();
+
+        foreach (var kvp in _chunkManager.chunks)
+        {
+            var go = kvp.Value.gameObject;
+            if (go == null)
+                continue;
+
+            var mc = go.GetComponent<MeshCollider>();
+            if (GenerateColliders)
+            {
+                if (mc != null)
+                    continue;
+
+                var mf = go.GetComponent<MeshFilter>();
+                if (mf == null || mf.sharedMesh == null)
+                    continue;
+
+                mc = go.AddComponent<MeshCollider>();
+                BakeColliderAsync(mc, mf.sharedMesh);
+            }
+            else if (mc != null)
+            {
+                Object.Destroy(mc);
+            }
         }
     }
 
@@ -260,20 +327,30 @@ public class ChunkBuilder
         var mr = go.GetComponent<MeshRenderer>();
 
         if (mf == null) mf = go.AddComponent<MeshFilter>();
-        if (mc == null) mc = go.AddComponent<MeshCollider>();
         if (mr == null) mr = go.AddComponent<MeshRenderer>();
 
-        if (mf == null || mc == null || mr == null) return;
+        if (mf == null || mr == null) return;
 
         mf.sharedMesh = mesh;
         mr.sharedMaterial = _terrainMaterial;
 
-        if (mesh != null)
-            BakeColliderAsync(mc, mesh);
+        if (GenerateColliders)
+        {
+            if (mc == null) mc = go.AddComponent<MeshCollider>();
+            if (mesh != null)
+                BakeColliderAsync(mc, mesh);
+        }
+        else if (mc != null)
+        {
+            Object.Destroy(mc);
+        }
     }
 
     private void BakeColliderAsync(MeshCollider mc, Mesh mesh)
     {
+        if (!GenerateColliders)
+            return;
+
         int meshId = mesh.GetInstanceID();
         var capturedMc = mc;
         var capturedMesh = mesh;

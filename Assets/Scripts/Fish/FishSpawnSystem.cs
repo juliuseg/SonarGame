@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Fixed-size GPU boid pool (maxInstances). Simulation, spawn, despawn, and draw
@@ -10,7 +11,14 @@ public class FishSpawnSystem : MonoBehaviour
 {
     const int SelectionSeed = 12345;
     const int ArgsStride = 5;
+    const int GridScanGroupSize = 256;
+    const int MaxGridCells = GridScanGroupSize * GridScanGroupSize;
     static readonly Vector3 ParkedPosition = new(0f, 100f, 0f);
+    static readonly ProfilingSampler FishBuilderDispatchSampler = new("FishSpawn.FishBuilder");
+    static readonly ProfilingSampler GridBuildDispatchSampler = new("FishSpawn.GridBuild");
+    static readonly ProfilingSampler BoidUpdateDispatchSampler = new("FishSpawn.BoidUpdate");
+    
+    public bool Enabled { get; set; } = true;
 
     [Header("Collect and despawn")]
     [SerializeField] private float collectParam;
@@ -89,7 +97,7 @@ public class FishSpawnSystem : MonoBehaviour
     [Header("Debug")]
     public bool logDrawCount = true;
     [Min(0.25f)] public float logInterval = 1f;
-    public bool turnOff;
+    
 
     private ChunkManager _chunkManager;
     private ChunkStreamingSettings _streamingSettings;
@@ -125,6 +133,14 @@ public class FishSpawnSystem : MonoBehaviour
     private ComputeBuffer _spawnCounterBuffer;
     private ComputeBuffer _threatBuffer;
     private ComputeBuffer _argsBuffer;
+    private ComputeBuffer _gridCellCountsBuffer;
+    private ComputeBuffer _gridCellOffsetsBuffer;
+    private ComputeBuffer _gridCellScatterBuffer;
+    private ComputeBuffer _gridCellFishBuffer;
+    private ComputeBuffer _gridScanBlockSumsBuffer;
+
+    private int _gridBufferCellCapacity;
+    private int _gridBufferScanGroupCapacity;
 
     private Vector4[] _spawnPosScratch;
     private Vector4[] _spawnVelScratch;
@@ -134,10 +150,29 @@ public class FishSpawnSystem : MonoBehaviour
     private int _kernelBoid;
     private int _kernelBuilder;
     private int _kernelMatrices;
+    private int _kernelGridClear;
+    private int _kernelGridCount;
+    private int _kernelGridScanBuckets;
+    private int _kernelGridScanBlockOffsets;
+    private int _kernelGridAddBlockOffsets;
+    private int _kernelGridInitScatter;
+    private int _kernelGridScatter;
     private uint[] _args;
     private int _argsSubMeshCapacity;
     private float _nextLogTime;
     private bool _gpuInitialized;
+
+    public void Reload()
+    {
+        ReleaseGpuResources();
+        _chunksInCollectRange.Clear();
+        _gpuInitialized = false;
+
+        if (_chunkManager == null)
+            return;
+
+        InitializeGpuResources();
+    }
 
     public void Init(
         ChunkManager chunkManager,
@@ -146,7 +181,6 @@ public class FishSpawnSystem : MonoBehaviour
         SDFAtlas sdfAtlas,
         MCSettings mcSettings)
     {
-        if (turnOff) return;
         _chunkManager = chunkManager;
         _streamingSettings = streamingSettings;
         _sdfAtlas = sdfAtlas;
@@ -156,11 +190,23 @@ public class FishSpawnSystem : MonoBehaviour
             ? Vector3.Scale(mcSettings.scale, mcSettings.chunkDims)
             : _chunkManager.GetChunkSize();
 
+        InitializeGpuResources();
+    }
+
+    void InitializeGpuResources()
+    {
         if (fishCompute != null)
         {
             _kernelBoid = fishCompute.FindKernel("BoidUpdate");
             _kernelBuilder = fishCompute.FindKernel("FishBuilder");
             _kernelMatrices = fishCompute.FindKernel("BuildMatrices");
+            _kernelGridClear = fishCompute.FindKernel("GridClear");
+            _kernelGridCount = fishCompute.FindKernel("GridCount");
+            _kernelGridScanBuckets = fishCompute.FindKernel("GridScanBuckets");
+            _kernelGridScanBlockOffsets = fishCompute.FindKernel("GridScanBlockOffsets");
+            _kernelGridAddBlockOffsets = fishCompute.FindKernel("GridAddBlockOffsets");
+            _kernelGridInitScatter = fishCompute.FindKernel("GridInitScatter");
+            _kernelGridScatter = fishCompute.FindKernel("GridScatter");
         }
 
         _spawnPosScratch = new Vector4[maxInstances];
@@ -179,10 +225,38 @@ public class FishSpawnSystem : MonoBehaviour
         _spawnCounterBuffer = new ComputeBuffer(1, sizeof(int));
         _threatBuffer = new ComputeBuffer(threatCapacity, sizeof(float) * 4);
 
+        EnsureGridBuffers(MaxGridCells, MaxGridCells / GridScanGroupSize);
+
         InitializeGpuPool();
         EnsureArgsCapacity(fishMesh);
         EnsureDrawMaterials();
         _gpuInitialized = fishCompute != null;
+    }
+
+    void ReleaseGpuResources()
+    {
+        DestroyDrawMaterials();
+        _boidStateBuffer?.Release();
+        _positionsBuffer?.Release();
+        _velocitiesBuffer?.Release();
+        _matricesBuffer?.Release();
+        _spawnPosBuffer?.Release();
+        _spawnVelBuffer?.Release();
+        _spawnCounterBuffer?.Release();
+        _threatBuffer?.Release();
+        _argsBuffer?.Release();
+        ReleaseGridBuffers();
+
+        _boidStateBuffer = null;
+        _positionsBuffer = null;
+        _velocitiesBuffer = null;
+        _matricesBuffer = null;
+        _spawnPosBuffer = null;
+        _spawnVelBuffer = null;
+        _spawnCounterBuffer = null;
+        _threatBuffer = null;
+        _argsBuffer = null;
+        _argsSubMeshCapacity = 0;
     }
 
     private void InitializeGpuPool()
@@ -303,9 +377,40 @@ public class FishSpawnSystem : MonoBehaviour
             ComputeBufferType.IndirectArguments);
     }
 
+    public void ClearAllFish()
+    {
+        _chunksInCollectRange.Clear();
+        if (_boidStateBuffer == null)
+            return;
+
+        InitializeGpuPool();
+        ZeroDrawArgs();
+    }
+
+    void ZeroDrawArgs()
+    {
+        if (_argsBuffer == null || fishMesh == null)
+            return;
+
+        EnsureArgsCapacity(fishMesh);
+        int subMeshCount = _drawMaterials != null ? _drawMaterials.Length : fishMesh.subMeshCount;
+        for (int s = 0; s < subMeshCount; s++)
+        {
+            int offset = s * ArgsStride;
+            _args[offset] = (uint)fishMesh.GetIndexCount(s);
+            _args[offset + 1] = 0;
+            _args[offset + 2] = (uint)fishMesh.GetIndexStart(s);
+            _args[offset + 3] = (uint)fishMesh.GetBaseVertex(s);
+            _args[offset + 4] = 0;
+        }
+
+        _argsBuffer.SetData(_args, 0, 0, subMeshCount * ArgsStride);
+    }
+
     public void Tick()
     {
-        if (turnOff) return;
+        if (!Enabled)
+            return;
         if (_chunkManager == null || _target == null)
             return;
 
@@ -314,6 +419,7 @@ public class FishSpawnSystem : MonoBehaviour
             return;
 
         TrySpawnChunksEnteringRange();
+        DispatchBuildSpatialGrid();
         DispatchBoidUpdate();
         DispatchBuildMatrices();
         DrawIndirect();
@@ -435,7 +541,7 @@ public class FishSpawnSystem : MonoBehaviour
         fishCompute.SetInt("_Count", maxInstances);
 
         int groups = Mathf.CeilToInt(maxInstances / 64f);
-        fishCompute.Dispatch(_kernelBuilder, groups, 1, 1);
+        DispatchProfiled(FishBuilderDispatchSampler, _kernelBuilder, groups);
     }
 
     private int BuildSpawnListFromChunk(Vector3Int chunk, List<Vector3> spawns, int totalFish)
@@ -746,6 +852,149 @@ public class FishSpawnSystem : MonoBehaviour
         fishCompute.SetBuffer(kernel, "_Velocities", _velocitiesBuffer);
     }
 
+    private void BindGridBuffers(int kernel)
+    {
+        fishCompute.SetBuffer(kernel, "_GridCellCounts", _gridCellCountsBuffer);
+        fishCompute.SetBuffer(kernel, "_GridCellOffsets", _gridCellOffsetsBuffer);
+        fishCompute.SetBuffer(kernel, "_GridCellScatter", _gridCellScatterBuffer);
+        fishCompute.SetBuffer(kernel, "_GridCellFish", _gridCellFishBuffer);
+        fishCompute.SetBuffer(kernel, "_GridScanBlockSums", _gridScanBlockSumsBuffer);
+    }
+
+    struct GridLayout
+    {
+        public Vector3 origin;
+        public Vector3Int dim;
+        public int cellCount;
+        public int scanGroupCount;
+        public float cellSize;
+        public int neighborCellRadius;
+    }
+
+    GridLayout ComputeGridLayout()
+    {
+        float cellSize = Mathf.Max(0.1f, boidNeighborRadius);
+        float radius = GetDespawnRadius();
+        int halfCells = Mathf.CeilToInt(radius / cellSize) + 1;
+        int dim = halfCells * 2 + 1;
+
+        while ((long)dim * dim * dim > MaxGridCells)
+        {
+            cellSize *= 1.25f;
+            halfCells = Mathf.CeilToInt(radius / cellSize) + 1;
+            dim = halfCells * 2 + 1;
+        }
+
+        int cellCount = dim * dim * dim;
+        int scanGroupCount = (cellCount + GridScanGroupSize - 1) / GridScanGroupSize;
+        int neighborCellRadius = Mathf.CeilToInt(boidNeighborRadius / cellSize);
+        Vector3 origin = _target.position - Vector3.one * (halfCells * cellSize);
+
+        return new GridLayout
+        {
+            origin = origin,
+            dim = new Vector3Int(dim, dim, dim),
+            cellCount = cellCount,
+            scanGroupCount = scanGroupCount,
+            cellSize = cellSize,
+            neighborCellRadius = neighborCellRadius
+        };
+    }
+
+    void EnsureGridBuffers(int cellCount, int scanGroupCount)
+    {
+        if (_gridCellCountsBuffer != null &&
+            cellCount <= _gridBufferCellCapacity &&
+            scanGroupCount <= _gridBufferScanGroupCapacity)
+            return;
+
+        ReleaseGridBuffers();
+
+        _gridBufferCellCapacity = Mathf.Max(cellCount, MaxGridCells / 8);
+        _gridBufferScanGroupCapacity = Mathf.Max(
+            scanGroupCount,
+            (_gridBufferCellCapacity + GridScanGroupSize - 1) / GridScanGroupSize);
+
+        _gridCellCountsBuffer = new ComputeBuffer(_gridBufferCellCapacity, sizeof(uint));
+        _gridCellOffsetsBuffer = new ComputeBuffer(_gridBufferCellCapacity, sizeof(uint));
+        _gridCellScatterBuffer = new ComputeBuffer(_gridBufferCellCapacity, sizeof(uint));
+        _gridCellFishBuffer = new ComputeBuffer(maxInstances, sizeof(uint));
+        _gridScanBlockSumsBuffer = new ComputeBuffer(_gridBufferScanGroupCapacity, sizeof(uint));
+    }
+
+    void ReleaseGridBuffers()
+    {
+        _gridCellCountsBuffer?.Release();
+        _gridCellOffsetsBuffer?.Release();
+        _gridCellScatterBuffer?.Release();
+        _gridCellFishBuffer?.Release();
+        _gridScanBlockSumsBuffer?.Release();
+
+        _gridCellCountsBuffer = null;
+        _gridCellOffsetsBuffer = null;
+        _gridCellScatterBuffer = null;
+        _gridCellFishBuffer = null;
+        _gridScanBlockSumsBuffer = null;
+        _gridBufferCellCapacity = 0;
+        _gridBufferScanGroupCapacity = 0;
+    }
+
+    void SetGridShaderParams(GridLayout layout)
+    {
+        fishCompute.SetInt("_GridCellCount", layout.cellCount);
+        fishCompute.SetInts("_GridDim", layout.dim.x, layout.dim.y, layout.dim.z);
+        fishCompute.SetFloat("_CellSize", layout.cellSize);
+        fishCompute.SetVector("_GridOrigin", layout.origin);
+        fishCompute.SetInt("_GridNeighborCellRadius", layout.neighborCellRadius);
+        fishCompute.SetInt("_GridScanGroupCount", layout.scanGroupCount);
+    }
+
+    void DispatchBuildSpatialGrid()
+    {
+        if (fishCompute == null || _gridCellCountsBuffer == null)
+            return;
+
+        GridLayout layout = ComputeGridLayout();
+        EnsureGridBuffers(layout.cellCount, layout.scanGroupCount);
+        SetGridShaderParams(layout);
+
+        BindSimulationBuffers(_kernelGridCount);
+        BindGridBuffers(_kernelGridClear);
+        fishCompute.SetInt("_Count", maxInstances);
+
+        int fishGroups = Mathf.CeilToInt(maxInstances / 64f);
+        int cellGroups = Mathf.CeilToInt(layout.cellCount / 64f);
+
+        CommandBuffer cmd = CommandBufferPool.Get();
+        using (new ProfilingScope(cmd, GridBuildDispatchSampler))
+        {
+            cmd.DispatchCompute(fishCompute, _kernelGridClear, cellGroups, 1, 1);
+
+            BindSimulationBuffers(_kernelGridCount);
+            BindGridBuffers(_kernelGridCount);
+            cmd.DispatchCompute(fishCompute, _kernelGridCount, fishGroups, 1, 1);
+
+            BindGridBuffers(_kernelGridScanBuckets);
+            cmd.DispatchCompute(fishCompute, _kernelGridScanBuckets, layout.scanGroupCount, 1, 1);
+
+            BindGridBuffers(_kernelGridScanBlockOffsets);
+            cmd.DispatchCompute(fishCompute, _kernelGridScanBlockOffsets, 1, 1, 1);
+
+            BindGridBuffers(_kernelGridAddBlockOffsets);
+            cmd.DispatchCompute(fishCompute, _kernelGridAddBlockOffsets, layout.scanGroupCount, 1, 1);
+
+            BindGridBuffers(_kernelGridInitScatter);
+            cmd.DispatchCompute(fishCompute, _kernelGridInitScatter, cellGroups, 1, 1);
+
+            BindSimulationBuffers(_kernelGridScatter);
+            BindGridBuffers(_kernelGridScatter);
+            cmd.DispatchCompute(fishCompute, _kernelGridScatter, fishGroups, 1, 1);
+        }
+
+        Graphics.ExecuteCommandBuffer(cmd);
+        CommandBufferPool.Release(cmd);
+    }
+
     private void BindSdfAndThreat(int kernel)
     {
         bool useAtlas = _sdfAtlas != null && _mcSettings != null;
@@ -817,7 +1066,11 @@ public class FishSpawnSystem : MonoBehaviour
             return;
 
         BindSimulationBuffers(_kernelBoid);
+        BindGridBuffers(_kernelBoid);
         BindSdfAndThreat(_kernelBoid);
+
+        GridLayout layout = ComputeGridLayout();
+        SetGridShaderParams(layout);
 
         fishCompute.SetInt("_Count", maxInstances);
         fishCompute.SetFloat("_DeltaTime", Time.deltaTime);
@@ -833,7 +1086,16 @@ public class FishSpawnSystem : MonoBehaviour
         fishCompute.SetFloat("_MaxSteerForce", maxSteerForce);
 
         int groups = Mathf.CeilToInt(maxInstances / 64f);
-        fishCompute.Dispatch(_kernelBoid, groups, 1, 1);
+        DispatchProfiled(BoidUpdateDispatchSampler, _kernelBoid, groups);
+    }
+
+    void DispatchProfiled(ProfilingSampler sampler, int kernel, int groups)
+    {
+        CommandBuffer cmd = CommandBufferPool.Get();
+        using (new ProfilingScope(cmd, sampler))
+            cmd.DispatchCompute(fishCompute, kernel, groups, 1, 1);
+        Graphics.ExecuteCommandBuffer(cmd);
+        CommandBufferPool.Release(cmd);
     }
 
     private void DispatchBuildMatrices()
@@ -901,15 +1163,6 @@ public class FishSpawnSystem : MonoBehaviour
 
     private void OnDestroy()
     {
-        DestroyDrawMaterials();
-        _boidStateBuffer?.Release();
-        _positionsBuffer?.Release();
-        _velocitiesBuffer?.Release();
-        _matricesBuffer?.Release();
-        _spawnPosBuffer?.Release();
-        _spawnVelBuffer?.Release();
-        _spawnCounterBuffer?.Release();
-        _threatBuffer?.Release();
-        _argsBuffer?.Release();
+        ReleaseGpuResources();
     }
 }

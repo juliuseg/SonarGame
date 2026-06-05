@@ -66,6 +66,7 @@ public class FPSCounter : MonoBehaviour
     
     void Update()
     {
+        
         // Calculate current frame time and FPS
         deltaTime += (Time.unscaledDeltaTime - deltaTime) * 0.1f;
         frameTime = deltaTime * 1000.0f;
@@ -92,6 +93,7 @@ public class FPSCounter : MonoBehaviour
         }
         
         frameCount++;
+
     }
     
     void UpdateFPSText()
@@ -106,8 +108,10 @@ public class FPSCounter : MonoBehaviour
         
         if (showFrameTime)
         {
-            fpsString += $" ({frameTime:F1}ms)";
+            fpsString += $"\n({frameTime:F1}ms)";
         }
+
+        fpsString += $"\n(max {FormatTargetFrameRate(Application.targetFrameRate)})";
         
         // Set the text
         fpsText.text = fpsString;
@@ -131,6 +135,8 @@ public class FPSCounter : MonoBehaviour
             Debug.Log($"FPS Updated: {fpsString}, Color: {fpsText.color}");
         }
     }
+    
+    static string FormatTargetFrameRate(int frameRate) => frameRate < 0 ? "unlimited" : frameRate.ToString();
     
     /// <summary>
     /// Get the current FPS value

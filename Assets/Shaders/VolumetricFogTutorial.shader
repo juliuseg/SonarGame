@@ -7,6 +7,7 @@ Shader "Tutorial/VolumetricFog"
         _StepSize("Step size", Range(0.1, 20)) = 1
         _DensityMultiplier("Density multiplier", Range(0, 10)) = 1
         _NoiseOffset("Noise offset", float) = 0
+        _BlueNoise("Blue noise", 2D) = "white" {}
         
         _FogNoise("Fog noise", 3D) = "white" {}
         _NoiseTiling("Noise tiling", float) = 1
@@ -31,6 +32,7 @@ Shader "Tutorial/VolumetricFog"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Random.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
             float4 _Color;
@@ -38,6 +40,8 @@ Shader "Tutorial/VolumetricFog"
             float  _DensityMultiplier;
             float  _StepSize;
             float  _NoiseOffset;
+            TEXTURE2D(_BlueNoise);
+            float4 _BlueNoise_TexelSize;
             TEXTURE3D(_FogNoise);
             float  _NoiseTiling;
             float  _FogNoiseMin;
@@ -70,11 +74,26 @@ Shader "Tutorial/VolumetricFog"
                 return density;
             }
 
+            // float distance_attenuation(float distSqr, float range)
+            // {
+            //     float lightAtten   = rcp(max(distSqr, 1e-4));
+            //     float smoothFactor = saturate(distSqr * (-1.0 / (range * range)) + 1.0);
+            //     return lightAtten * smoothFactor * smoothFactor;
+            // }
             float distance_attenuation(float distSqr, float range)
             {
-                float lightAtten   = rcp(max(distSqr, 1e-4));
+                // Original
+                float lightAtten = rcp(max(distSqr, 1e-4));
                 float smoothFactor = saturate(distSqr * (-1.0 / (range * range)) + 1.0);
-                return lightAtten * smoothFactor * smoothFactor;
+                float original = lightAtten * smoothFactor * smoothFactor;
+
+                // Clamped
+                float dist = sqrt(distSqr);
+                float distance01 = saturate(1.0f - (dist / range));
+                float clamped = pow(distance01, 2.0f);
+
+                float blend = 0.3f; // Match whatever blend value you used in RealtimeLights.hlsl
+                return lerp(original, clamped, blend);
             }
 
             float angle_attenuation(float3 lightForward, float3 lightToRayN, float2 spotParams)
@@ -82,6 +101,29 @@ Shader "Tutorial/VolumetricFog"
                 float SdotL = dot(lightForward, lightToRayN);
                 float atten = saturate(SdotL * spotParams.x + spotParams.y);
                 return atten * atten;
+            }
+
+            int2 WrapCoord(int2 coord, int size)
+            {
+                coord.x = (coord.x % size + size) % size;
+                coord.y = (coord.y % size + size) % size;
+                return coord;
+            }
+
+            float RayMarchJitter(float2 pixelCoords, int frameCount)
+            {
+                // Same (pixel + frame) input as InterleavedGradientNoise; texture replaces the hash.
+                const float2 frameMagicScale = float2(2.083, 4.867);
+                float2 p = pixelCoords + frameCount * frameMagicScale;
+
+                int texSize = (int)(_BlueNoise_TexelSize.z + 0.5);
+                if (texSize > 0)
+                {
+                    int2 coord = WrapCoord(int2(floor(p)), texSize);
+                    return LOAD_TEXTURE2D(_BlueNoise, coord).r;
+                }
+
+                return InterleavedGradientNoise(pixelCoords, frameCount);
             }
 
             half4 frag(Varyings IN) : SV_Target
@@ -96,7 +138,8 @@ Shader "Tutorial/VolumetricFog"
 
                 float2 pixelCoords   = IN.texcoord * _ScreenParams.xy;
                 float  distLimit     = min(viewLength, _MaxDistance);
-                float  distTravelled = InterleavedGradientNoise(pixelCoords, (int)(_Time.y / max(HALF_EPS, unity_DeltaTime.x))) * _NoiseOffset;
+                int    frameCount    = (int)(_Time.y / max(HALF_EPS, unity_DeltaTime.x));
+                float  distTravelled = RayMarchJitter(pixelCoords, frameCount) * _NoiseOffset;
                 float  transmittance = 1;
                 float4 fogCol        = _Color;
 

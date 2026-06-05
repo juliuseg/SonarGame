@@ -51,6 +51,7 @@ MonoBehaviour:
   edtShader: {fileID: 7200000, guid: 15a5535528618463d9e6e9a2bc9b657c, type: 3}
   terrainShader: {fileID: 7200000, guid: fbf175ce4324749338eb1bd405efbe5e, type: 3}
   packShader: {fileID: 7200000, guid: 5e8c78c18366e4b8f8ee0064d2c39116, type: 3}
+  propInstanceBuildShader: {fileID: 7200000, guid: f7e4c8d92b1a4f6e9d3a5b7c2e8f1d0a, type: 3}
   chunkLoaderTarget: {fileID: 0}
   chunkParent: {fileID: 4393061782156441770}
   instancingMeshCoral: {fileID: 11400000, guid: 2c2121c59bf95427797512fa87fb1af9, type: 2}

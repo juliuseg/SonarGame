@@ -1,3 +1,6 @@
+#ifndef INSTANCE_MATRICES_INCLUDED
+#define INSTANCE_MATRICES_INCLUDED
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 StructuredBuffer<float4x4> _InstanceMatrices;
@@ -43,3 +46,5 @@ void ApplyInstanceNormalAndTangent_float(
     normalOut = normalize(mul((float3x3)unity_WorldToObject, worldNormal));
     tangentOut = normalize(mul((float3x3)unity_WorldToObject, worldTangent));
 }
+
+#endif

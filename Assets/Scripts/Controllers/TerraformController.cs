@@ -13,6 +13,9 @@ public class TerraformController : MonoBehaviour
     public float terraformStrenght = 1.0f;
     public float terraformRadius = 1.0f;
 
+    [Tooltip("Apparent pointer size as a fraction of screen height. Larger = bigger on screen.")]
+    public float pointerScreenSize = 0.05f;
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     public void Init(ChunkStreamer chunkStreamer)
     {
@@ -37,6 +40,11 @@ public class TerraformController : MonoBehaviour
         if (Physics.Raycast(centerRay, out RaycastHit hitInfo, maxRayDistance))
         {
             mousePointer.transform.position = hitInfo.point;
+
+            float distance = hitInfo.distance;
+            float worldScale = 2f * distance * Mathf.Tan(targetCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * pointerScreenSize;
+            mousePointer.transform.localScale = Vector3.one * worldScale;
+
             mousePointer.SetActive(true);
 
             // Handle mouse click using new Input System

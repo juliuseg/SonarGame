@@ -8,6 +8,7 @@ public class Chunk {
     public List<TerraformEdit> terraformEdits;
     public List<SpawnPoint> spawnPoints;
     public List<Vector3> interiorSpawnPositions;
+    public List<ChunkPropBatch> propBatches;
     public uint biomeMask;
     public int sdfSlotIndex = -1;
     
@@ -48,6 +49,17 @@ public class Chunk {
                 list.Add(i);
         }
         return list;
+    }
+
+    public void ReleasePropBatches()
+    {
+        if (propBatches == null)
+            return;
+
+        for (int i = 0; i < propBatches.Count; i++)
+            propBatches[i]?.Dispose();
+
+        propBatches.Clear();
     }
 
 }
