@@ -15,3 +15,5 @@ MonoBehaviour:
   densityOffset: 0
   instancingMeshes:
   - {fileID: 11400000, guid: d431c1a74474141048dcbe4140f470f0, type: 2}
+  spawnNodes:
+  - {fileID: 11400000, guid: 27e35b4b09d7249509c36cd859baa954, type: 2}

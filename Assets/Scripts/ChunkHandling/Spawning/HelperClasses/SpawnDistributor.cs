@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
@@ -8,7 +7,6 @@ public static class SpawnDistributor
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float Hash(Vector3 p)
     {
-        // quantize to millimeter scale (adjust as needed)
         int xi = Mathf.FloorToInt(p.x * 1000f);
         int yi = Mathf.FloorToInt(p.y * 1000f);
         int zi = Mathf.FloorToInt(p.z * 1000f);
@@ -24,29 +22,36 @@ public static class SpawnDistributor
         IList<float> probabilities,
         int biomeIndex)
     {
-        // normalize probabilities to ≤1
+        var results = new List<List<SpawnPoint>>(probabilities.Count);
+        for (int i = 0; i < probabilities.Count; i++)
+            results.Add(new List<SpawnPoint>());
+
+        if (probabilities.Count == 0)
+            return results;
+
         var weights = new float[probabilities.Count];
         float total = 0f;
         for (int i = 0; i < probabilities.Count; i++)
         {
-            if (total >= 1f) { weights[i] = 0f; continue; }
-            float space = 1f - total;
-            float w = Mathf.Min(probabilities[i], space);
-            weights[i] = w;
-            total += w;
+            float prob = Mathf.Max(0f, probabilities[i]);
+            weights[i] = prob;
+            total += prob;
         }
-        if (probabilities.Count > 0 && total > 1f)
-            Debug.LogWarning("Probabilities sum above 1, truncated to fit.");
 
-        // prepare result lists
-        var results = new List<List<SpawnPoint>>(weights.Length);
-        for (int i = 0; i < weights.Length; i++)
-            results.Add(new List<SpawnPoint>());
+        if (total <= 0f)
+            return results;
 
-        // deterministic assignment
+        if (total > 1f)
+        {
+            for (int i = 0; i < weights.Length; i++)
+                weights[i] /= total;
+        }
+
         for (int i = 0; i < points.Count; i++)
         {
-            if (points[i].colorWS.x != biomeIndex) continue;
+            if (points[i].colorWS.x != biomeIndex)
+                continue;
+
             float rnd = Hash(points[i].positionWS);
             float acc = 0f;
             for (int j = 0; j < weights.Length; j++)

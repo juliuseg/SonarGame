@@ -6,6 +6,7 @@ public class BiomeSettings : ScriptableObject
 {
     public float densityOffset;
     public List<InstancingMesh> instancingMeshes;
+    public List<SpawnNode> spawnNodes;
 
 }
 
