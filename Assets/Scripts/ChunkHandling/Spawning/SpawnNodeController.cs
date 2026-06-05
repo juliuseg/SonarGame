@@ -35,6 +35,7 @@ public class SpawnNodeController : MonoBehaviour
 {
     [SerializeField] bool hasBeenEdited;
     Vector3 _spawnPointPosition;
+    Vector3 _spawnPointNormal = Vector3.up;
     bool _initialized;
 
     public bool HasBeenEdited
@@ -44,10 +45,12 @@ public class SpawnNodeController : MonoBehaviour
     }
 
     public Vector3 SpawnPointPosition => _spawnPointPosition;
+    public Vector3 SpawnPointNormal => _spawnPointNormal;
 
-    public void Initialize(Vector3 spawnPointPosition)
+    public void Initialize(Vector3 spawnPointPosition, Vector3 spawnPointNormal)
     {
         _spawnPointPosition = spawnPointPosition;
+        _spawnPointNormal = spawnPointNormal.sqrMagnitude > 1e-6f ? spawnPointNormal.normalized : Vector3.up;
         _initialized = true;
     }
 

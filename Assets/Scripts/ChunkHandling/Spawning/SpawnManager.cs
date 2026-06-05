@@ -190,18 +190,18 @@ public class SpawnManager
 
             var instance = Object.Instantiate(spawnNode.prefab, position, rotation, parent);
             instance.transform.localScale = Vector3.one * scale;
-            InitializeSpawnNodeController(instance, spawnPoints[i].positionWS);
+            InitializeSpawnNodeController(instance, spawnPoints[i].positionWS, spawnPoints[i].normalWS);
             instances.Add(instance);
             placed.Add(new PlacedSpawn(position, scale));
         }
     }
 
-    static void InitializeSpawnNodeController(GameObject instance, Vector3 spawnPointPosition)
+    static void InitializeSpawnNodeController(GameObject instance, Vector3 spawnPointPosition, Vector3 spawnPointNormal)
     {
         if (!instance.TryGetComponent(out SpawnNodeController controller))
             controller = instance.AddComponent<SpawnNodeController>();
 
-        controller.Initialize(spawnPointPosition);
+        controller.Initialize(spawnPointPosition, spawnPointNormal);
     }
 
     static void RestorePersistedInstance(

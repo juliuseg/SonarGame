@@ -5,10 +5,9 @@ using TMPro;
 [RequireComponent(typeof(CamFollow), typeof(FreeCameraController))]
 public class CamSwitcher : MonoBehaviour
 {
-    
     public CamFollow camFollow;
     public FreeCameraController freeCameraController;
-    public TerraformController terraformController;
+    public ToolModeController toolModeController;
 
     private Vector3 lastCamFollowPosition;
     private Quaternion lastCamFollowRotation;
@@ -20,49 +19,44 @@ public class CamSwitcher : MonoBehaviour
 
     [SerializeField] private float distToEnterSub;
 
-    [SerializeField] private GameObject enterSubText;   
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    [SerializeField] private GameObject enterSubText;
+
     void Start()
     {
         camFollow = GetComponent<CamFollow>();
         freeCameraController = GetComponent<FreeCameraController>();
-        terraformController = GetComponent<TerraformController>();
+        toolModeController = GetComponent<ToolModeController>();
         camFollow.enabled = true;
         freeCameraController.enabled = false;
-        terraformController.mousePointer.SetActive(false);
-        terraformController.enabled = false;
+        toolModeController.SetFreeCameraActive(false);
 
-        
         lastCamFollowPosition = transform.position;
         lastCamFollowRotation = transform.rotation;
         lastFreeCameraControllerPosition = transform.position;
         lastFreeCameraControllerRotation = transform.rotation;
     }
 
-    // Update is called once per frame
     void Update()
     {
-
-        if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub){
+        if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub)
             enterSubText.SetActive(true);
-        } else {
+        else
             enterSubText.SetActive(false);
-        }
 
-        if (Keyboard.current.tabKey.wasPressedThisFrame){
-            if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub){
+        if (Keyboard.current.tabKey.wasPressedThisFrame)
+        {
+            if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub)
+            {
                 camFollow.enabled = true;
                 freeCameraController.enabled = false;
-                terraformController.mousePointer.SetActive(false);
-                terraformController.enabled = false;
+                toolModeController.SetFreeCameraActive(false);
                 transform.SetPositionAndRotation(lastCamFollowPosition, lastCamFollowRotation);
-
-
-            } else if (camFollow.enabled) {
+            }
+            else if (camFollow.enabled)
+            {
                 camFollow.enabled = false;
                 freeCameraController.enabled = true;
-                terraformController.enabled = true;
-                terraformController.mousePointer.SetActive(true);
+                toolModeController.SetFreeCameraActive(true);
 
                 lastCamFollowPosition = transform.position;
                 lastCamFollowRotation = transform.rotation;
@@ -71,7 +65,6 @@ public class CamSwitcher : MonoBehaviour
                 transform.position = camFollow.target.position + rotatedOffset;
                 freeCameraController.resetRots();
             }
-            
         }
     }
 }

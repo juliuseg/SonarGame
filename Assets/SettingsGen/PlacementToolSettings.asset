@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7320ffc8b606d4cdb904c76f33a8f044, type: 3}
+  m_Name: PlacementToolSettings
+  m_EditorClassIdentifier: Assembly-CSharp::PlacementToolSettings
+  pointerPrefab: {fileID: 6681538724679470678, guid: 838cccac047114a8eb9403991c92045e, type: 3}
+  placementErrorMaterial: {fileID: 2100000, guid: 6e5f67a27dcdd4835893c4b747fd1b7a, type: 2}
+  placementPossibleMaterial: {fileID: 2100000, guid: f4aed5967c37c4a2bb0207b5a54fd462, type: 2}
+  snapDistance: 4
+  maxRayDistance: 1000
+  pointerWorldScale: 1

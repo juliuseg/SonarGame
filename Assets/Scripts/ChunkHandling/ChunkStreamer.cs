@@ -17,6 +17,8 @@ public class ChunkStreamer
     private readonly HashSet<Vector3Int> _dirty = new();
     private readonly List<Vector3Int> _unloadScratch = new();
 
+    public ChunkManager ChunkManager => _chunkManager;
+
     public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkStreamingSettings chunkStreamingSettings, Transform target)
     {
         _chunkBuilder = chunkBuilder;
