@@ -24,15 +24,33 @@ public class TailController : MonoBehaviour
 
     void SpawnSegments()
     {
+        Transform parent = leader != null ? leader : transform;
+        Vector3 spawnPos = leader != null ? leader.position : transform.position;
+        Vector3 prefabScale = segmentPrefab.transform.localScale;
+        Vector3 compensatedScale = CompensateScaleForParent(prefabScale, parent.lossyScale);
         segments = new Transform[segmentCount];
 
         for (int i = 0; i < segmentCount; i++)
         {
-            GameObject seg = Instantiate(segmentPrefab, leader.position, Quaternion.identity);
+            GameObject seg = Instantiate(segmentPrefab, spawnPos, Quaternion.identity, parent);
             seg.name = $"TailSegment_{i}";
             segments[i] = seg.transform;
-            segments[i].position = leader.position;
+            segments[i].position = spawnPos;
+            segments[i].localScale = compensatedScale;
         }
+    }
+
+    static Vector3 CompensateScaleForParent(Vector3 prefabLocalScale, Vector3 parentLossyScale)
+    {
+        return new Vector3(
+            DivideUnlessZero(prefabLocalScale.x, parentLossyScale.x),
+            DivideUnlessZero(prefabLocalScale.y, parentLossyScale.y),
+            DivideUnlessZero(prefabLocalScale.z, parentLossyScale.z));
+    }
+
+    static float DivideUnlessZero(float numerator, float denominator)
+    {
+        return Mathf.Abs(denominator) > 1e-6f ? numerator / denominator : numerator;
     }
 
     void LateUpdate()

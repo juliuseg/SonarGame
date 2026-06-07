@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class Bootstrap : MonoBehaviour
@@ -14,6 +15,7 @@ public class Bootstrap : MonoBehaviour
     [SerializeField] private ComputeShader propInstanceBuildShader;
 
     [Header("Scene References")]
+    [SerializeField] private Transform player;
     [SerializeField] private Transform chunkLoaderTarget;
     [SerializeField] private Transform chunkParent;
 
@@ -22,7 +24,7 @@ public class Bootstrap : MonoBehaviour
     
     [Header("Systems")]
     [SerializeField] private SDFGradientMover sdfGradientMover;
-    [SerializeField] private RandomSteeredMover randomSteeredMover;
+    [SerializeField] private List<RandomSteeredMover> randomSteeredMovers = new();
     [SerializeField] private ChunkSDFVisualizer sdfVisualizer;
     [SerializeField] private ToolModeController toolModeController;
     [SerializeField] private RuntimeDebugController runtimeDebug;
@@ -36,6 +38,9 @@ public class Bootstrap : MonoBehaviour
 
     [Header("Fish")]
     [SerializeField] private FishSpawnSystem fishSpawnSystem;
+
+    [Header("Enemies")]
+    [SerializeField] private SeaSnakeSpawnSystem seaSnakeSpawnSystem;
     
     private ChunkStreamer _chunkStreamer;
     private SpawnManager _spawnManager;
@@ -69,7 +74,10 @@ public class Bootstrap : MonoBehaviour
         chunkBuilder.OnChunkReady += _spawnManager.HandleChunkReady;
         
         if (sdfGradientMover != null) sdfGradientMover.Init(chunkManager);
-        if (randomSteeredMover != null) randomSteeredMover.Init(chunkManager);
+        foreach (var mover in randomSteeredMovers)
+        {
+            if (mover != null) mover.Init(chunkManager);
+        }
         if (sdfVisualizer != null) sdfVisualizer.Init(chunkManager, mcSettings);
 
         _inventory = new Inventory();
@@ -88,6 +96,9 @@ public class Bootstrap : MonoBehaviour
         if (fishSpawnSystem != null)
             fishSpawnSystem.Init(chunkManager, chunkStreamingSettings, chunkLoaderTarget, sdfAtlas, mcSettings);
 
+        if (seaSnakeSpawnSystem != null)
+            seaSnakeSpawnSystem.Init(_automationLogic, player, chunkManager);
+
         if (runtimeDebug != null)
             runtimeDebug.Init(chunkBuilder, _chunkStreamer, _spawnManager, fishSpawnSystem, sdfAtlas);
 
@@ -103,6 +114,7 @@ public class Bootstrap : MonoBehaviour
         _spawnManager.Tick();
         _automationLogic?.Tick(Time.deltaTime);
         if (fishSpawnSystem != null) fishSpawnSystem.Tick();
+        if (seaSnakeSpawnSystem != null) seaSnakeSpawnSystem.Tick();
         
         if (_sdfAtlas != null && chunkLoaderTarget != null && _chunkManager != null)
         {

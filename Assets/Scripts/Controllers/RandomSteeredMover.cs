@@ -47,11 +47,13 @@ public class RandomSteeredMover : MonoBehaviour
     public float minSeekStrength = 0.5f;
     [Tooltip("Distance at which enemy locks fully onto target.")]
     public float attackRange = 5f;
-    [Tooltip("Treat target as wall: steer away when within avoidance radius.")]
+    [Tooltip("Treat target as wall: actively flee when within avoidance radius.")]
     public bool avoidTarget;
     public float targetAvoidanceRadius = 1.0f;
-    [Tooltip("When first avoiding target, idle for this many seconds and ignore target.")]
-    public float idleDuration = 2f;
+    [Tooltip("Seconds to keep fleeing after entering the flee zone.")]
+    [Min(0.1f)] public float fleeDuration = 2f;
+    [Tooltip("Distance before chase can resume. 0 = targetAvoidanceRadius + 2.")]
+    [Min(0f)] public float fleeExitRadius;
 
     [Header("Shooting")]
     public GameObject bulletPrefab;
@@ -71,62 +73,78 @@ public class RandomSteeredMover : MonoBehaviour
     private Vector3 _biasDir;
     private float _nextJitterT;
     private System.Random _rng;
-    public bool idleing;
-    private float _idleCountdown;
-    private bool _wasInTargetAvoidanceRange;
     private int _ammo;
     private float _nextReloadTime;
     private float _wavePhase;
+    private bool _fleeing;
+    private float _fleeCountdown;
+    private bool _wasInFleeZone;
 
     public float WavePhase => _wavePhase;
 
-    public void Init(ChunkManager chunkManager)
+    const float InitialHeadingYawJitterDeg = 30f;
+
+    public void Init(ChunkManager chunkManager, Transform initialHeadingTarget = null)
     {
         _chunkManager = chunkManager;
 
         if (seed == 0)
             seed = UnityEngine.Random.Range(0, 1_000_000);
         _rng = new System.Random(seed);
-    }
 
-    void Start()
-    {
         if (_chunkManager == null)
         {
             Debug.LogError("ChunkManager not found");
             return;
         }
 
-        initialDirection = RandomUnitVector();
-        _dir = initialDirection.sqrMagnitude > 1e-6f ? initialDirection.normalized : Vector3.forward;
-        _biasDir = RandomUnitVector();
+        Transform headingTarget = initialHeadingTarget != null ? initialHeadingTarget : target;
+        _dir = ComputeInitialHeading(headingTarget);
+        initialDirection = _dir;
+        _biasDir = _dir;
         _nextJitterT = Time.time + (jitterHz > 0f ? 1f / jitterHz : 999f);
         _ammo = magazineSize;
         _nextReloadTime = Time.time + reloadInterval;
+
+        if (_dir.sqrMagnitude > 1e-6f)
+            transform.rotation = Quaternion.LookRotation(_dir, Vector3.up);
     }
+
+    Vector3 ComputeInitialHeading(Transform headingTarget)
+    {
+        if (headingTarget == null)
+        {
+            Vector3 rnd = RandomUnitVector();
+            return rnd.sqrMagnitude > 1e-6f ? rnd.normalized : Vector3.forward;
+        }
+
+        Vector3 toTarget = headingTarget.position - transform.position;
+        if (toTarget.sqrMagnitude < 1e-6f)
+            return transform.forward.sqrMagnitude > 1e-6f ? transform.forward.normalized : Vector3.forward;
+
+        float yawOffset = (float)(_rng.NextDouble() * 2.0 * InitialHeadingYawJitterDeg - InitialHeadingYawJitterDeg);
+        return (Quaternion.AngleAxis(yawOffset, Vector3.up) * toTarget.normalized).normalized;
+    }
+
 
     void Update()
     {
         float dt = Time.deltaTime;
 
-        // --- resolve effective target ---
-        Transform effectiveTarget = (idleing || target == null) ? null : target;
-        if (idleing)
-        {
-            _idleCountdown -= dt;
-            if (_idleCountdown <= 0f) idleing = false;
-        }
-
         // --- distance to target ---
-        float distToTarget = effectiveTarget != null
-            ? (effectiveTarget.position - transform.position).magnitude
+        float distToTarget = target != null
+            ? (target.position - transform.position).magnitude
             : float.MaxValue;
-        bool inAttackRange = effectiveTarget != null && distToTarget < attackRange;
+
+        UpdateFleeState(distToTarget, dt);
+
+        bool inTargetAvoidanceRange = avoidTarget && target != null && _fleeing;
+        bool inAttackRange = target != null && distToTarget < attackRange && !inTargetAvoidanceRange;
 
         // --- jitter: update bias direction periodically ---
         if (Time.time >= _nextJitterT)
         {
-            _biasDir = ComputeBiasDirection(effectiveTarget, distToTarget, inAttackRange);
+            _biasDir = ComputeBiasDirection(distToTarget, inAttackRange, inTargetAvoidanceRange);
             _nextJitterT += jitterHz > 0f ? 1f / jitterHz : 999f;
         }
 
@@ -150,7 +168,7 @@ public class RandomSteeredMover : MonoBehaviour
             HandleTargetAvoidance(ref avoidBias, ref gradient, ref sdfValue, ref hasSdf);
 
         // --- compute desired direction ---
-        Vector3 desired = ComputeDesired(effectiveTarget, distToTarget, inAttackRange, avoidBias);
+        Vector3 desired = ComputeDesired(inAttackRange, inTargetAvoidanceRange, avoidBias);
 
         // --- wall following ---
         float turningBoost = 1f;
@@ -176,7 +194,7 @@ public class RandomSteeredMover : MonoBehaviour
             ? (target.position - transform.position).magnitude
             : float.MaxValue;
         float currentSpeed = ComputeSpeed(distToPlayer, hasSdf, sdfValue, avoidBias);
-        Debug.Log($"[{name}] speed: {currentSpeed:F2}");
+        // Debug.Log($"[{name}] speed: {currentSpeed:F2}");
 
         // --- reload ---
         if (_ammo < magazineSize && Time.time >= _nextReloadTime)
@@ -196,18 +214,53 @@ public class RandomSteeredMover : MonoBehaviour
 
     // ---- steering helpers ----
 
-    private Vector3 ComputeBiasDirection(Transform effectiveTarget, float distToTarget, bool inAttackRange)
+    void UpdateFleeState(float distToTarget, float dt)
     {
-        if (effectiveTarget == null)
+        if (!avoidTarget || target == null)
+        {
+            _fleeing = false;
+            _fleeCountdown = 0f;
+            _wasInFleeZone = false;
+            return;
+        }
+
+        float exitRadius = fleeExitRadius > 0f
+            ? fleeExitRadius
+            : targetAvoidanceRadius + 2f;
+
+        bool inFleeZone = distToTarget < targetAvoidanceRadius;
+        if (inFleeZone && !_wasInFleeZone)
+        {
+            _fleeing = true;
+            _fleeCountdown = fleeDuration;
+        }
+
+        _wasInFleeZone = inFleeZone;
+
+        if (!_fleeing)
+            return;
+
+        if (_fleeCountdown > 0f)
+            _fleeCountdown -= dt;
+
+        if (_fleeCountdown <= 0f && distToTarget >= exitRadius)
+            _fleeing = false;
+    }
+
+    private Vector3 ComputeBiasDirection(float distToTarget, bool inAttackRange, bool inTargetAvoidanceRange)
+    {
+        if (target == null)
             return RandomUnitVector();
 
-        Vector3 toTarget = effectiveTarget.position - transform.position;
+        Vector3 toTarget = target.position - transform.position;
         Vector3 seek = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : Vector3.zero;
 
-        if (inAttackRange)
-            return seek; // pure seek in attack range
+        if (inTargetAvoidanceRange)
+            return -seek;
 
-        // outside attack range: blend seek with random, but guarantee minSeekStrength
+        if (inAttackRange)
+            return seek;
+
         Vector3 rnd = RandomUnitVector();
         float seekWeight = Mathf.Max(minSeekStrength, targetBiasStrength);
         float randomWeight = Mathf.Min(4f, distToTarget / 10f);
@@ -215,14 +268,20 @@ public class RandomSteeredMover : MonoBehaviour
         return combined.sqrMagnitude > 1e-6f ? combined.normalized : rnd;
     }
 
-    private Vector3 ComputeDesired(Transform effectiveTarget, float distToTarget, bool inAttackRange, Vector3 avoidBias)
+    private Vector3 ComputeDesired(bool inAttackRange, bool inTargetAvoidanceRange, Vector3 avoidBias)
     {
-        if (inAttackRange)
+        if (inTargetAvoidanceRange && target != null)
         {
-            // in attack range: micro-adjust every frame toward target, ignore everything else
-            Vector3 toTarget = effectiveTarget.position - transform.position;
+            Vector3 toTarget = target.position - transform.position;
+            Vector3 away = toTarget.sqrMagnitude > 1e-6f ? (-toTarget).normalized : _dir;
+            return (_dir + away + avoidBias).normalized;
+        }
+
+        if (inAttackRange && target != null)
+        {
+            Vector3 toTarget = target.position - transform.position;
             Vector3 seek = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : _biasDir;
-            return (_dir + seek).normalized; // smooth micro-correction each frame
+            return (_dir + seek).normalized;
         }
 
         return (_dir + turningStrength * _biasDir + avoidBias).normalized;
@@ -230,35 +289,19 @@ public class RandomSteeredMover : MonoBehaviour
 
     private void HandleTargetAvoidance(ref Vector3 avoidBias, ref Vector3 gradient, ref float sdfValue, ref bool hasSdf)
     {
-        float dist = (target.position - transform.position).magnitude;
-        bool inRange = dist < targetAvoidanceRadius;
+        if (!_fleeing)
+            return;
 
-        if (inRange)
-        {
-            if (!idleing && !_wasInTargetAvoidanceRange)
-            {
-                idleing = true;
-                _idleCountdown = idleDuration;
-            }
-            else
-            {
-                Vector3 toTarget = target.position - transform.position;
-                if (dist > 1e-6f)
-                {
-                    Vector3 away = -toTarget / dist;
-                    float t = Mathf.Clamp01((targetAvoidanceRadius - dist) / targetAvoidanceRadius);
-                    avoidBias += away * avoidanceStrength * Mathf.Pow(t, 0.7f);
-                    gradient = away;
-                    sdfValue = Mathf.Min(sdfValue, dist);
-                    hasSdf = true;
-                }
-            }
-            _wasInTargetAvoidanceRange = true;
-        }
-        else if (!idleing)
-        {
-            _wasInTargetAvoidanceRange = false;
-        }
+        float dist = (target.position - transform.position).magnitude;
+        if (dist <= 1e-6f)
+            return;
+
+        Vector3 away = (transform.position - target.position) / dist;
+        float t = Mathf.Clamp01((targetAvoidanceRadius - dist) / targetAvoidanceRadius);
+        avoidBias += away * avoidanceStrength * Mathf.Pow(t, 0.7f);
+        gradient = away;
+        sdfValue = Mathf.Min(sdfValue, dist);
+        hasSdf = true;
     }
 
     private float ComputeSpeed(float distToPlayer, bool hasSdf, float sdfValue, Vector3 avoidBias)

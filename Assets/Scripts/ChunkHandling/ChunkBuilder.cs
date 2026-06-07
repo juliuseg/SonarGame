@@ -207,8 +207,17 @@ public class ChunkBuilder
         var go = new GameObject($"Chunk_{coord.x}_{coord.y}_{coord.z}");
         go.transform.SetParent(_chunkParent, false);
         go.transform.localPosition = Vector3.zero;
+        SetChunkWallLayer(go);
         chunk.gameObject = go;
         _chunkManager.SetChunk(coord, chunk);
+    }
+
+    static void SetChunkWallLayer(GameObject go)
+    {
+        int layer = LayerMask.NameToLayer("Walls");
+        if (layer < 0)
+            layer = 6;
+        go.layer = layer;
     }
 
     // ---- Mesh generation ----
@@ -313,6 +322,7 @@ public class ChunkBuilder
         {
             chunk.gameObject = new GameObject($"Chunk_Empty_{coord.x}_{coord.y}_{coord.z}");
             chunk.gameObject.transform.SetParent(_chunkParent);
+            SetChunkWallLayer(chunk.gameObject);
         }
 
         _chunkManager.SetChunk(coord, chunk);
@@ -322,6 +332,8 @@ public class ChunkBuilder
 
     private void ApplyMeshToGameObject(GameObject go, Mesh mesh)
     {
+        SetChunkWallLayer(go);
+
         var mf = go.GetComponent<MeshFilter>();
         var mc = go.GetComponent<MeshCollider>();
         var mr = go.GetComponent<MeshRenderer>();

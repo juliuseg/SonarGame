@@ -11,6 +11,10 @@ GameObject:
   - component: {fileID: 4393061782156441770}
   - component: {fileID: 7875504794590251432}
   - component: {fileID: 7289028735568057172}
+  - component: {fileID: 8287681856710595134}
+  - component: {fileID: 9095257698872838501}
+  - component: {fileID: 6091385454925735105}
+  - component: {fileID: 1013811240462360501}
   m_Layer: 0
   m_Name: MarchingCubesGenerator
   m_TagString: Untagged
@@ -45,20 +49,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 66284dc618e94a68a707a0f2d14bbc30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Bootstrap
-  chunkSettings: {fileID: 11400000, guid: f680756a4cbe14267beec9326fefcaa3, type: 2}
+  chunkStreamingSettings: {fileID: 11400000, guid: f680756a4cbe14267beec9326fefcaa3, type: 2}
   mcSettings: {fileID: 11400000, guid: 7bee69cbe628a47a49f241914d45651f, type: 2}
   densityShader: {fileID: 7200000, guid: ad6f752c1017f45a0a23d5639214f403, type: 3}
   edtShader: {fileID: 7200000, guid: 15a5535528618463d9e6e9a2bc9b657c, type: 3}
   terrainShader: {fileID: 7200000, guid: fbf175ce4324749338eb1bd405efbe5e, type: 3}
   packShader: {fileID: 7200000, guid: 5e8c78c18366e4b8f8ee0064d2c39116, type: 3}
   propInstanceBuildShader: {fileID: 7200000, guid: f7e4c8d92b1a4f6e9d3a5b7c2e8f1d0a, type: 3}
+  player: {fileID: 0}
   chunkLoaderTarget: {fileID: 0}
-  chunkParent: {fileID: 4393061782156441770}
-  instancingMeshCoral: {fileID: 11400000, guid: 2c2121c59bf95427797512fa87fb1af9, type: 2}
-  instancingMeshRock: {fileID: 11400000, guid: 31a6a47f6f07f41e896dd84fd0533368, type: 2}
+  chunkParent: {fileID: 0}
   terrainMaterial: {fileID: 2100000, guid: d7051d23e55154a599201a08396b0f2a, type: 2}
   sdfGradientMover: {fileID: 0}
-  randomSteeredMover: {fileID: 0}
+  randomSteeredMovers:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  sdfVisualizer: {fileID: 7289028735568057172}
+  toolModeController: {fileID: 0}
+  runtimeDebug: {fileID: 6091385454925735105}
+  sdfAtlasTest: {fileID: 8287681856710595134}
+  sdfAtlasTestShader: {fileID: 7200000, guid: deef3aad98ae4025a37206c19f8aa98a, type: 3}
+  uiController: {fileID: 0}
+  fishSpawnSystem: {fileID: 0}
+  seaSnakeSpawnSystem: {fileID: 1013811240462360501}
 --- !u!114 &7289028735568057172
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -71,5 +87,78 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eff3afd883add46e8ab7890a6ead6d10, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
+  useSingleChunkMode: 0
   debugChunkCoord: {x: 0, y: 0, z: 0}
+  sdfTarget: {fileID: 0}
+  followRegionScale: 1
   colorMultiplier: 1
+  alpha: 0.3
+  maxAbsDistance: 1
+--- !u!114 &8287681856710595134
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eee7c1abe9b0464cbb84f7ed142395f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SDFAtlasTest
+  samplePoint: {fileID: 0}
+  testShader: {fileID: 7200000, guid: deef3aad98ae4025a37206c19f8aa98a, type: 3}
+  gpuSdfValue: 0
+  cpuSdfValue: 0
+--- !u!114 &9095257698872838501
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 889740f5ee2c348bf9cff97212d9b914, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
+--- !u!114 &6091385454925735105
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45eeacf1704614bc2898305667379b1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RuntimeDebugController
+  menuLabel: {fileID: 0}
+  generateMesh: 1
+  generateSdf: 1
+  chunkColliders: 1
+  spawnInstancingMeshes: 1
+  fishSystem: 1
+  fishSdfAvoidance: 1
+  fishMaxInstances: 2000
+  targetFrameRate: -1
+  showFps: 1
+  fpsUiObject: {fileID: 0}
+  volumetricFog: 0
+  volumetricFogFeature: {fileID: 3464338643130440663, guid: f288ae1f4751b564a96ac7587541f7a2, type: 2}
+  debugLights: 0
+  debugLightObject: {fileID: 0}
+--- !u!114 &1013811240462360501
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 158361632268675231}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f5308af62344243a081a0261d94cd987, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SeaSnakeSpawnSystem
+  settings: {fileID: 11400000, guid: 00617a4a2dd1e491683ee6f223a6e662, type: 2}

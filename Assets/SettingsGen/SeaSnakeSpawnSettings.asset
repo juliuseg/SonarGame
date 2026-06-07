@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7954eccc0afb4760a3afe7ad86a1311, type: 3}
+  m_Name: SeaSnakeSpawnSettings
+  m_EditorClassIdentifier: Assembly-CSharp::SeaSnakeSpawnSettings
+  prefab: {fileID: 4161997751960109428, guid: 28fc79ab7faf145b48908642f46cfc99, type: 3}
+  distanceFromPlayer: 35
+  maxSpawned: 8
+  spawnInterval: 8
+  maxRayAttempts: 64
+  wallLayerMask:
+    serializedVersion: 2
+    m_Bits: 64

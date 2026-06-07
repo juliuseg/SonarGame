@@ -26,6 +26,7 @@ public class AutomationLogicSystem
 
     public IReadOnlyList<AutomationNode> Nodes => _nodes;
     public IReadOnlyList<AutomationEdge> Edges => _edges;
+    public bool IsMiningActive => _minerSubEdges.Count > 0;
 
     public void Dispose()
     {
@@ -56,7 +57,7 @@ public class AutomationLogicSystem
         _nodes.Add(node);
         _machineToNode[machine] = node;
 
-        PrintNetworkState();
+        // PrintNetworkState();
         return node;
     }
 
@@ -112,7 +113,7 @@ public class AutomationLogicSystem
         if (IsMinerSubConnection(outputLogicNode, inputLogicNode))
             OnMinerSubEdgeAdded(edge, outputLogicNode);
 
-        PrintNetworkState();
+        // PrintNetworkState();
         return edge;
     }
 
@@ -160,7 +161,7 @@ public class AutomationLogicSystem
         _machineToNode.Remove(machine);
         _nodes.Remove(node);
 
-        PrintNetworkState();
+        // PrintNetworkState();
     }
 
     void RemoveEdge(AutomationEdge edge, bool destroyPipeObject)
@@ -186,7 +187,7 @@ public class AutomationLogicSystem
         if (destroyPipeObject && pipe != null)
             Object.Destroy(pipe.gameObject);
 
-        PrintNetworkState();
+        // PrintNetworkState();
     }
 
     static bool IsMinerSubConnection(AutomationNode outputNode, AutomationNode inputNode)
