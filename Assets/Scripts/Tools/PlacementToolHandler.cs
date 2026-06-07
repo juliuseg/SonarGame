@@ -6,15 +6,17 @@ public class PlacementToolHandler
     readonly PlacementToolSettings _settings;
     readonly Camera _camera;
     readonly ChunkManager _chunkManager;
+    readonly AutomationLogicSystem _automationLogic;
 
     GameObject _pointer;
     CrystalController _snappedCrystal;
 
-    public PlacementToolHandler(PlacementToolSettings settings, Camera camera, ChunkManager chunkManager)
+    public PlacementToolHandler(PlacementToolSettings settings, Camera camera, ChunkManager chunkManager, AutomationLogicSystem automationLogic)
     {
         _settings = settings;
         _camera = camera;
         _chunkManager = chunkManager;
+        _automationLogic = automationLogic;
     }
 
     public void Enable()
@@ -69,7 +71,13 @@ public class PlacementToolHandler
 
         var mouse = Mouse.current;
         if (mouse != null && mouse.leftButton.wasPressedThisFrame && _snappedCrystal != null)
+        {
             _snappedCrystal.OnPlacementSucceeded();
+
+            Machine machine = _snappedCrystal.GetComponentInChildren<Machine>(true);
+            if (machine != null)
+                _automationLogic?.CreateNode(machine);
+        }
     }
 
     void SnapToCrystal(CrystalController crystal)

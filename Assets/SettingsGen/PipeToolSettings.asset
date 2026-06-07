@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeToolSettings
   pointerPrefab: {fileID: 1212215242805220524, guid: 13565e94ff7104d5193c9f337f4dba56, type: 3}
   pointerWorldScale: 0.25
+  pointerInputMaterial: {fileID: 2100000, guid: 82b486dee13cb485ca2a0850a684a674, type: 2}
+  pointerOutputMaterial: {fileID: 2100000, guid: 7e4504d2a5b6e4cc38eb9ef9bf889217, type: 2}
   maxRayDistance: 200
   previewEndDistance: 4
   radius: 0.15
@@ -24,5 +26,5 @@ MonoBehaviour:
   material: {fileID: 2100000, guid: f4aed5967c37c4a2bb0207b5a54fd462, type: 2}
   material_error: {fileID: 2100000, guid: 6e5f67a27dcdd4835893c4b747fd1b7a, type: 2}
   material_placed: {fileID: 2100000, guid: 4538cf75ab1984f2a8e51108edc20eb7, type: 2}
-  maxBuildableLenght: 100
+  maxBuildableLenght: 20
   debugRegenerateAllPipes: 0

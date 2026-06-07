@@ -24,14 +24,14 @@ public class ToolModeController : MonoBehaviour
     ToolMode _mode = ToolMode.None;
     bool _freeCameraActive;
 
-    public void Init(ChunkStreamer chunkStreamer)
+    public void Init(ChunkStreamer chunkStreamer, AutomationLogicSystem automationLogic)
     {
         if (targetCamera == null)
             targetCamera = Camera.main;
 
         _terraformHandler = new TerraformToolHandler(chunkStreamer, terraformSettings, targetCamera);
-        _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, chunkStreamer.ChunkManager);
-        _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent);
+        _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, chunkStreamer.ChunkManager, automationLogic);
+        _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent, automationLogic);
     }
 
     public void SetFreeCameraActive(bool active)

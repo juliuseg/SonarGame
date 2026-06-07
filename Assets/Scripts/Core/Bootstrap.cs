@@ -39,6 +39,7 @@ public class Bootstrap : MonoBehaviour
     private ChunkBuilder _chunkBuilder;
     private ChunkManager _chunkManager;
     private SDFAtlas _sdfAtlas;
+    private AutomationLogicSystem _automationLogic;
 
     void Awake()
     {
@@ -66,7 +67,15 @@ public class Bootstrap : MonoBehaviour
         if (sdfGradientMover != null) sdfGradientMover.Init(chunkManager);
         if (randomSteeredMover != null) randomSteeredMover.Init(chunkManager);
         if (sdfVisualizer != null) sdfVisualizer.Init(chunkManager, mcSettings);
-        if (toolModeController != null) toolModeController.Init(_chunkStreamer);
+
+        _automationLogic = new AutomationLogicSystem();
+        if (toolModeController != null) toolModeController.Init(_chunkStreamer, _automationLogic);
+
+        foreach (Machine machine in FindObjectsByType<Machine>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (machine.RegisterOnStart)
+                _automationLogic.CreateNode(machine);
+        }
         
         if (sdfAtlasTest != null)
             sdfAtlasTest.Init(chunkManager, sdfAtlas, mcSettings, chunkStreamingSettings);

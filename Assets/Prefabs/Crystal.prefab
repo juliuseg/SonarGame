@@ -1,5 +1,95 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3041074158347951819
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1222359320157582826}
+  - component: {fileID: 4853040620952567133}
+  - component: {fileID: 5850851746561001283}
+  m_Layer: 0
+  m_Name: DrillHead
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1222359320157582826
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3041074158347951819}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.7069834, y: 0, z: 0, w: 0.7072302}
+  m_LocalPosition: {x: -0.00096012105, y: 1.6425031, z: 0.004248356}
+  m_LocalScale: {x: 92.5976, y: 92.5976, z: 92.5976}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 616590446043608841}
+  m_LocalEulerAnglesHint: {x: -89.98, y: 0, z: 0}
+--- !u!33 &4853040620952567133
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3041074158347951819}
+  m_Mesh: {fileID: -596452230740235518, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
+--- !u!23 &5850851746561001283
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3041074158347951819}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 8337139346150866556, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
 --- !u!1 &3970728819918382342
 GameObject:
   m_ObjectHideFlags: 0
@@ -251,7 +341,6 @@ MeshRenderer:
   m_Materials:
   - {fileID: -5243988174349660497, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
   - {fileID: -3331792938883526823, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
-  - {fileID: 8337139346150866556, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -407,13 +496,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4745058494101329372}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7071068, y: 0, z: -0, w: 0.7071067}
+  m_LocalRotation: {x: -0.70710677, y: 0.00012338163, z: -0.00012338163, w: 0.70710677}
   m_LocalPosition: {x: 0.5302652, y: 2.2301588, z: 0.0000000067055224}
   m_LocalScale: {x: 100, y: 100, z: 100}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 616590446043608841}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: -89.98, y: 90, z: -90}
 --- !u!33 &5519069014294176445
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -480,13 +569,15 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 616590446043608841}
+  - component: {fileID: 7553986199564647203}
+  - component: {fileID: 992910788671256445}
   m_Layer: 0
   m_Name: Drill
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &616590446043608841
 Transform:
   m_ObjectHideFlags: 0
@@ -504,9 +595,39 @@ Transform:
   - {fileID: 62101027761781849}
   - {fileID: 5064253430557844365}
   - {fileID: 6268908309708305575}
+  - {fileID: 1222359320157582826}
   - {fileID: 572273228223634882}
   m_Father: {fileID: 897306385264275901}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7553986199564647203
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5301581420991289545}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5caf5df4dc3244d648556369ec70a162, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Machine
+  machineType: 0
+  inputNodes: []
+  outputNodes:
+  - {fileID: 3750004161443679599}
+  registerOnStart: 0
+--- !u!114 &992910788671256445
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5301581420991289545}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40d91f93b07624410949ab1c42c43f9f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
 --- !u!1 &5459032813888862692
 GameObject:
   m_ObjectHideFlags: 0
@@ -533,13 +654,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5459032813888862692}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7071068, y: 0, z: -0, w: 0.7071067}
+  m_LocalRotation: {x: -0.70710677, y: 0.00012338163, z: -0.00012338163, w: 0.70710677}
   m_LocalPosition: {x: -0.53026474, y: 2.2301588, z: 0.0000000067055224}
   m_LocalScale: {x: 100, y: 100, z: 100}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 616590446043608841}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: -89.98, y: 90, z: -90}
 --- !u!33 &352908329778402784
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -644,6 +765,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeNodeController
   tangent: {x: 0, y: 0.16, z: 1.6}
   occupied: 0
+  Parent: {fileID: 0}
+  Direction: 0
 --- !u!135 &1089671671798118379
 SphereCollider:
   m_ObjectHideFlags: 0

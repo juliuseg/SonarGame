@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -6,6 +7,8 @@ public class PipeToolHandler
     readonly PipeToolSettings _settings;
     readonly Camera _camera;
     readonly Transform _pipeParent;
+    readonly AutomationLogicSystem _automationLogic;
+    readonly HashSet<PipeNodeController> _warnedOrphanNodes = new();
 
     PipeNodeController _startNode;
     GameObject _cursor;
@@ -14,11 +17,12 @@ public class PipeToolHandler
     MeshFilter _previewMeshFilter;
     MeshRenderer _previewMeshRenderer;
 
-    public PipeToolHandler(PipeToolSettings settings, Camera camera, Transform pipeParent)
+    public PipeToolHandler(PipeToolSettings settings, Camera camera, Transform pipeParent, AutomationLogicSystem automationLogic)
     {
         _settings = settings;
         _camera = camera;
         _pipeParent = pipeParent;
+        _automationLogic = automationLogic;
     }
 
     public void Enable()
@@ -124,6 +128,12 @@ public class PipeToolHandler
             return;
         }
 
+        if (_startNode.Direction == hoveredNode.Direction)
+        {
+            ClearStartNode();
+            return;
+        }
+
         TryPlacePipe(_startNode, hoveredNode);
         ClearStartNode();
     }
@@ -146,7 +156,28 @@ public class PipeToolHandler
             ? Quaternion.LookRotation(tangent.normalized)
             : Quaternion.identity;
 
+        Material pointerMaterial = hoveredNode.Direction == PipeNodeDirection.Input
+            ? _settings.pointerInputMaterial
+            : _settings.pointerOutputMaterial;
+        ApplyPointerMaterial(_cursor, pointerMaterial);
+
         _cursor.SetActive(true);
+    }
+
+    static void ApplyPointerMaterial(GameObject root, Material material)
+    {
+        if (material == null)
+            return;
+
+        var renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            var materials = renderer.sharedMaterials;
+            for (int j = 0; j < materials.Length; j++)
+                materials[j] = material;
+            renderer.sharedMaterials = materials;
+        }
     }
 
     void UpdatePreviewPipe(PipeNodeController hoveredNode)
@@ -206,7 +237,22 @@ public class PipeToolHandler
             if (pipeNode == exclude)
                 continue;
 
+            if (pipeNode.Parent == null)
+            {
+                if (_warnedOrphanNodes.Add(pipeNode))
+                {
+                    Debug.LogWarning(
+                        $"PipeNodeController '{pipeNode.name}' has no Machine parent and is ignored by the pipe tool.",
+                        pipeNode);
+                }
+
+                continue;
+            }
+
             if (pipeNode.occupied)
+                continue;
+
+            if (exclude != null && pipeNode.Direction == exclude.Direction)
                 continue;
 
             node = pipeNode;
@@ -281,8 +327,27 @@ public class PipeToolHandler
         placedPipe.endNode = endNode;
         placedPipe.CacheEndpointPositions();
 
+        PipeNodeController outputNode;
+        PipeNodeController inputNode;
+        if (startNode.Direction == PipeNodeDirection.Output)
+        {
+            outputNode = startNode;
+            inputNode = endNode;
+        }
+        else
+        {
+            outputNode = endNode;
+            inputNode = startNode;
+        }
+
+        var pipe = pipeObject.AddComponent<Pipe>();
+        pipe.OutputNode = outputNode;
+        pipe.InputNode = inputNode;
+
         startNode.occupied = true;
         endNode.occupied = true;
+
+        _automationLogic?.CreateEdge(pipe);
     }
 
     void DestroyPlacedPipe(PlacedPipe placedPipe)

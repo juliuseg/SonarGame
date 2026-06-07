@@ -311,7 +311,6 @@ MonoBehaviour:
   sdfAvoidWeight: 100
   sdfGradientDelta: 0.5
   sdfPenetrationForceMult: 4
-  sdfMinClearance: 0.15
   sdfWallBrakeRadius: 2.5
   sdfWallBrakeStrength: 0.85
   sdfThreatSuppress: 0.95
@@ -1084,6 +1083,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeNodeController
   tangent: {x: 0, y: -1.5, z: 0}
   occupied: 0
+  Parent: {fileID: 0}
+  Direction: 0
 --- !u!135 &242130838
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -2325,6 +2326,7 @@ GameObject:
   - component: {fileID: 765039364}
   - component: {fileID: 765039365}
   - component: {fileID: 765039366}
+  - component: {fileID: 765039367}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2435,6 +2437,26 @@ MonoBehaviour:
   propellerAngularVelocityMultiplier: 30
   boxYawRotationMultiplier: 1
   holderPitchRotationMultiplier: 1
+--- !u!114 &765039367
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 765039361}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5caf5df4dc3244d648556369ec70a162, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Machine
+  machineType: 1
+  inputNodes:
+  - {fileID: 1944768401}
+  - {fileID: 242130837}
+  - {fileID: 788568457}
+  - {fileID: 1879977464}
+  outputNodes: []
+  registerOnStart: 1
 --- !u!1 &788568455
 GameObject:
   m_ObjectHideFlags: 0
@@ -2482,6 +2504,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeNodeController
   tangent: {x: 0, y: -1.5, z: 0}
   occupied: 0
+  Parent: {fileID: 0}
+  Direction: 0
 --- !u!135 &788568458
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -4748,7 +4772,7 @@ PrefabInstance:
     - target: {fileID: -6602980499731573292, guid: be9ea5b1228234e87a79b65287061279, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2616563176481179961, guid: 0f47ed2dac70d4518992e4d0144e21da, type: 3}
+      objectReference: {fileID: 2100000, guid: 4028f295e1df1412690ddec13d2d488c, type: 2}
     - target: {fileID: -6514014636974762711, guid: be9ea5b1228234e87a79b65287061279, type: 3}
       propertyPath: 'm_Materials.Array.data[1]'
       value: 
@@ -5209,6 +5233,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeNodeController
   tangent: {x: 0, y: -1.5, z: 0}
   occupied: 0
+  Parent: {fileID: 0}
+  Direction: 0
 --- !u!135 &1879977465
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -5439,6 +5465,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PipeNodeController
   tangent: {x: 0, y: -1.5, z: 0}
   occupied: 0
+  Parent: {fileID: 0}
+  Direction: 0
 --- !u!135 &1944768402
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -5633,10 +5661,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuntimeDebugController
   menuLabel: {fileID: 88939043}
-  generateMesh: 0
+  generateMesh: 1
   generateSdf: 1
   chunkColliders: 1
-  spawnInstancingMeshes: 0
+  spawnInstancingMeshes: 1
   fishSystem: 1
   fishSdfAvoidance: 1
   fishMaxInstances: 2000

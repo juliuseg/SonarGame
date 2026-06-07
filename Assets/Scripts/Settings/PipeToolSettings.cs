@@ -6,6 +6,8 @@ public class PipeToolSettings : ScriptableObject
     [Header("Pointer")]
     public GameObject pointerPrefab;
     public float pointerWorldScale = 1f;
+    public Material pointerInputMaterial;
+    public Material pointerOutputMaterial;
 
     [Header("Raycast")]
     public float maxRayDistance = 1000f;
