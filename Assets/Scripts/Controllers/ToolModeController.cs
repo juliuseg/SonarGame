@@ -6,20 +6,23 @@ public class ToolModeController : MonoBehaviour
     enum ToolMode
     {
         None,
+        Dismantle,
         Placement,
-        Terraform,
-        Pipe
+        Pipe,
+        Terraform
     }
 
-    [SerializeField] private TerraformToolSettings terraformSettings;
+    [SerializeField] private DismantleToolSettings dismantleSettings;
     [SerializeField] private PlacementToolSettings placementSettings;
     [SerializeField] private PipeToolSettings pipeSettings;
+    [SerializeField] private TerraformToolSettings terraformSettings;
     [SerializeField] private Transform pipeParent;
     [SerializeField] private Camera targetCamera;
 
-    TerraformToolHandler _terraformHandler;
+    DismantleToolHandler _dismantleHandler;
     PlacementToolHandler _placementHandler;
     PipeToolHandler _pipeHandler;
+    TerraformToolHandler _terraformHandler;
 
     ToolMode _mode = ToolMode.None;
     bool _freeCameraActive;
@@ -29,9 +32,10 @@ public class ToolModeController : MonoBehaviour
         if (targetCamera == null)
             targetCamera = Camera.main;
 
-        _terraformHandler = new TerraformToolHandler(chunkStreamer, terraformSettings, targetCamera);
+        _dismantleHandler = new DismantleToolHandler(dismantleSettings, targetCamera, automationLogic);
         _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, chunkStreamer.ChunkManager, automationLogic);
         _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent, automationLogic);
+        _terraformHandler = new TerraformToolHandler(chunkStreamer, terraformSettings, targetCamera);
     }
 
     public void SetFreeCameraActive(bool active)
@@ -54,14 +58,17 @@ public class ToolModeController : MonoBehaviour
 
         switch (_mode)
         {
-            case ToolMode.Terraform:
-                _terraformHandler.Tick();
+            case ToolMode.Dismantle:
+                _dismantleHandler.Tick();
                 break;
             case ToolMode.Placement:
                 _placementHandler.Tick();
                 break;
             case ToolMode.Pipe:
                 _pipeHandler.Tick();
+                break;
+            case ToolMode.Terraform:
+                _terraformHandler.Tick();
                 break;
         }
     }
@@ -75,17 +82,18 @@ public class ToolModeController : MonoBehaviour
         if (keyboard.digit1Key.wasPressedThisFrame)
             SetMode(ToolMode.None);
         else if (keyboard.digit2Key.wasPressedThisFrame)
-            SetMode(ToolMode.Placement);
+            SetMode(ToolMode.Dismantle);
         else if (keyboard.digit3Key.wasPressedThisFrame)
-            SetMode(ToolMode.Terraform);
+            SetMode(ToolMode.Placement);
         else if (keyboard.digit4Key.wasPressedThisFrame)
             SetMode(ToolMode.Pipe);
         else if (keyboard.digit5Key.wasPressedThisFrame
                  || keyboard.digit6Key.wasPressedThisFrame
                  || keyboard.digit7Key.wasPressedThisFrame
-                 || keyboard.digit8Key.wasPressedThisFrame
-                 || keyboard.digit9Key.wasPressedThisFrame)
+                 || keyboard.digit8Key.wasPressedThisFrame)
             SetMode(ToolMode.None);
+        else if (keyboard.digit9Key.wasPressedThisFrame)
+            SetMode(ToolMode.Terraform);
     }
 
     void SetMode(ToolMode mode)
@@ -93,22 +101,26 @@ public class ToolModeController : MonoBehaviour
         if (_mode == mode)
             return;
 
-        _terraformHandler.Disable();
+        _dismantleHandler.Disable();
         _placementHandler.Disable();
         _pipeHandler.Disable();
+        _terraformHandler.Disable();
 
         _mode = mode;
 
         switch (_mode)
         {
-            case ToolMode.Terraform:
-                _terraformHandler.Enable();
+            case ToolMode.Dismantle:
+                _dismantleHandler.Enable();
                 break;
             case ToolMode.Placement:
                 _placementHandler.Enable();
                 break;
             case ToolMode.Pipe:
                 _pipeHandler.Enable();
+                break;
+            case ToolMode.Terraform:
+                _terraformHandler.Enable();
                 break;
         }
     }

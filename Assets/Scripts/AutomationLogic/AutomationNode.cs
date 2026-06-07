@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AutomationNode
@@ -66,5 +67,42 @@ public class AutomationNode
             throw new ArgumentOutOfRangeException(nameof(slot));
 
         _outputEdges[slot] = edge;
+    }
+
+    public void ClearInputEdge(AutomationEdge edge)
+    {
+        for (int i = 0; i < _inputEdges.Length; i++)
+        {
+            if (_inputEdges[i] == edge)
+                _inputEdges[i] = null;
+        }
+    }
+
+    public void ClearOutputEdge(AutomationEdge edge)
+    {
+        for (int i = 0; i < _outputEdges.Length; i++)
+        {
+            if (_outputEdges[i] == edge)
+                _outputEdges[i] = null;
+        }
+    }
+
+    public List<AutomationEdge> GetConnectedEdges()
+    {
+        var edges = new List<AutomationEdge>();
+
+        for (int i = 0; i < _outputEdges.Length; i++)
+        {
+            if (_outputEdges[i] != null)
+                edges.Add(_outputEdges[i]);
+        }
+
+        for (int i = 0; i < _inputEdges.Length; i++)
+        {
+            if (_inputEdges[i] != null)
+                edges.Add(_inputEdges[i]);
+        }
+
+        return edges;
     }
 }

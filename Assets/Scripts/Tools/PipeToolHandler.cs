@@ -91,6 +91,7 @@ public class PipeToolHandler
                 _settings.material_placed);
 
             placedPipe.CacheEndpointPositions();
+            SetupPipeCollider(placedPipe.gameObject, meshFilter.mesh);
 
             if (curveLength >= _settings.maxBuildableLenght)
                 DestroyPlacedPipe(placedPipe);
@@ -322,6 +323,8 @@ public class PipeToolHandler
             endRingUp,
             _settings.material_placed);
 
+        SetupPipeCollider(pipeObject, mesh);
+
         var placedPipe = pipeObject.AddComponent<PlacedPipe>();
         placedPipe.startNode = startNode;
         placedPipe.endNode = endNode;
@@ -352,12 +355,21 @@ public class PipeToolHandler
 
     void DestroyPlacedPipe(PlacedPipe placedPipe)
     {
-        if (placedPipe.startNode != null)
-            placedPipe.startNode.occupied = false;
-        if (placedPipe.endNode != null)
-            placedPipe.endNode.occupied = false;
-
         Object.Destroy(placedPipe.gameObject);
+    }
+
+    static void SetupPipeCollider(GameObject pipeObject, Mesh mesh)
+    {
+        int dismantableLayer = LayerMask.NameToLayer("Dismantable");
+        if (dismantableLayer >= 0)
+            pipeObject.layer = dismantableLayer;
+
+        if (!pipeObject.TryGetComponent(out MeshCollider collider))
+            collider = pipeObject.AddComponent<MeshCollider>();
+
+        collider.sharedMesh = mesh;
+        collider.convex = true;
+        collider.isTrigger = true;
     }
 
     float BuildPipeMesh(

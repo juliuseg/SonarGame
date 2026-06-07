@@ -3,14 +3,16 @@ using UnityEngine;
 public class AutomationEdge
 {
     public int Id { get; }
+    public Pipe Pipe { get; }
     public GameObject PipeObject { get; }
     public AutomationNode NodeA { get; }
     public AutomationNode NodeB { get; }
 
-    public AutomationEdge(int id, GameObject pipeObject, AutomationNode nodeA, AutomationNode nodeB)
+    public AutomationEdge(int id, Pipe pipe, AutomationNode nodeA, AutomationNode nodeB)
     {
         Id = id;
-        PipeObject = pipeObject;
+        Pipe = pipe;
+        PipeObject = pipe.gameObject;
         NodeA = nodeA;
         NodeB = nodeB;
     }

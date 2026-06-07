@@ -31,6 +31,9 @@ public class Bootstrap : MonoBehaviour
     [SerializeField] private SDFAtlasTest sdfAtlasTest;
     [SerializeField] private ComputeShader sdfAtlasTestShader;
 
+    [Header("UI")]
+    [SerializeField] private UIController uiController;
+
     [Header("Fish")]
     [SerializeField] private FishSpawnSystem fishSpawnSystem;
     
@@ -40,6 +43,7 @@ public class Bootstrap : MonoBehaviour
     private ChunkManager _chunkManager;
     private SDFAtlas _sdfAtlas;
     private AutomationLogicSystem _automationLogic;
+    private Inventory _inventory;
 
     void Awake()
     {
@@ -68,7 +72,8 @@ public class Bootstrap : MonoBehaviour
         if (randomSteeredMover != null) randomSteeredMover.Init(chunkManager);
         if (sdfVisualizer != null) sdfVisualizer.Init(chunkManager, mcSettings);
 
-        _automationLogic = new AutomationLogicSystem();
+        _inventory = new Inventory();
+        _automationLogic = new AutomationLogicSystem(_inventory);
         if (toolModeController != null) toolModeController.Init(_chunkStreamer, _automationLogic);
 
         foreach (Machine machine in FindObjectsByType<Machine>(FindObjectsInactive.Include, FindObjectsSortMode.None))
@@ -85,6 +90,9 @@ public class Bootstrap : MonoBehaviour
 
         if (runtimeDebug != null)
             runtimeDebug.Init(chunkBuilder, _chunkStreamer, _spawnManager, fishSpawnSystem, sdfAtlas);
+
+        if (uiController != null)
+            uiController.Init(_inventory);
     }
 
     void Update()
@@ -93,6 +101,7 @@ public class Bootstrap : MonoBehaviour
 
         _chunkStreamer.Tick();
         _spawnManager.Tick();
+        _automationLogic?.Tick(Time.deltaTime);
         if (fishSpawnSystem != null) fishSpawnSystem.Tick();
         
         if (_sdfAtlas != null && chunkLoaderTarget != null && _chunkManager != null)
@@ -113,5 +122,6 @@ public class Bootstrap : MonoBehaviour
         _spawnManager?.Dispose();
         _chunkStreamer.Dispose();
         _sdfAtlas?.Dispose();
+        _automationLogic?.Dispose();
     }
 }

@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Machine : MonoBehaviour
 {
+    public static event Action<Machine> Destroyed;
+
     [SerializeField] MachineType machineType;
     [SerializeField] List<PipeNodeController> inputNodes = new();
     [SerializeField] List<PipeNodeController> outputNodes = new();
@@ -54,5 +57,11 @@ public class Machine : MonoBehaviour
         }
 
         return -1;
+    }
+
+    void OnDestroy()
+    {
+        GetComponentInParent<CrystalController>()?.ClearMiner();
+        Destroyed?.Invoke(this);
     }
 }
