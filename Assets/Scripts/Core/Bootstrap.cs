@@ -37,6 +37,7 @@ public class Bootstrap : MonoBehaviour
     private ChunkStreamer _chunkStreamer;
     private SpawnManager _spawnManager;
     private ChunkBuilder _chunkBuilder;
+    private ChunkManager _chunkManager;
     private SDFAtlas _sdfAtlas;
 
     void Awake()
@@ -48,6 +49,7 @@ public class Bootstrap : MonoBehaviour
         _sdfAtlas = sdfAtlas;
         
         var chunkManager = new ChunkManager(mcSettings, sdfAtlas);
+        _chunkManager = chunkManager;
         var chunkBuilder = new ChunkBuilder(baker, sdfGen, chunkManager, chunkStreamingSettings, terrainMaterial, chunkParent, sdfAtlas);
         _chunkBuilder = chunkBuilder;
         
@@ -66,8 +68,8 @@ public class Bootstrap : MonoBehaviour
         if (sdfVisualizer != null) sdfVisualizer.Init(chunkManager, mcSettings);
         if (toolModeController != null) toolModeController.Init(_chunkStreamer);
         
-        if (sdfAtlasTest != null) 
-            sdfAtlasTest.Init(chunkManager, sdfAtlas, mcSettings);
+        if (sdfAtlasTest != null)
+            sdfAtlasTest.Init(chunkManager, sdfAtlas, mcSettings, chunkStreamingSettings);
 
         if (fishSpawnSystem != null)
             fishSpawnSystem.Init(chunkManager, chunkStreamingSettings, chunkLoaderTarget, sdfAtlas, mcSettings);
@@ -84,7 +86,14 @@ public class Bootstrap : MonoBehaviour
         _spawnManager.Tick();
         if (fishSpawnSystem != null) fishSpawnSystem.Tick();
         
-        _sdfAtlas.FlushLookup();
+        if (_sdfAtlas != null && chunkLoaderTarget != null && _chunkManager != null)
+        {
+            Vector3 chunkSize = _chunkManager.GetChunkSize();
+            Vector3Int centerChunk = _chunkManager.WorldToChunk(chunkLoaderTarget.position);
+            int halfDim = ChunkMath.GetStreamHalfRangeChunks(
+                chunkLoaderTarget.position, chunkSize, chunkStreamingSettings);
+            _sdfAtlas.SyncChunkLookup(centerChunk, halfDim);
+        }
     }
 
     void OnDestroy()

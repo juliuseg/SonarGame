@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
@@ -6,6 +7,9 @@ public class SDFAtlas : System.IDisposable
 {
     public ComputeBuffer AtlasBuffer { get; private set; }
     public ComputeBuffer LookupBuffer { get; private set; }
+    public ComputeBuffer ChunkToSlotBuffer { get; private set; }
+    public Vector3Int ChunkLookupOrigin { get; private set; }
+    public Vector3Int ChunkLookupDim { get; private set; }
     public int SlotSize { get; private set; }
 
     private readonly int _maxSlots;
@@ -13,7 +17,11 @@ public class SDFAtlas : System.IDisposable
     private readonly Dictionary<Vector3Int, int> _coordToSlot = new();
     private readonly LookupEntry[] _lookupEntries;
     private bool _lookupDirty;
-    
+
+    private int[] _chunkToSlotEntries;
+    private Vector3Int _cachedCenterChunk = new(int.MinValue, int.MinValue, int.MinValue);
+    private int _cachedHalfDim = -1;
+
     public int MaxSlots => _maxSlots;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -28,9 +36,9 @@ public class SDFAtlas : System.IDisposable
         SlotSize = chunkDims.x * chunkDims.y * chunkDims.z;
 
         AtlasBuffer = new ComputeBuffer(
-            maxSlots * SlotSize, 
-            sizeof(float), 
-            ComputeBufferType.Default, 
+            maxSlots * SlotSize,
+            sizeof(float),
+            ComputeBufferType.Default,
             ComputeBufferMode.SubUpdates);
         LookupBuffer = new ComputeBuffer(maxSlots, sizeof(int) * 4);
 
@@ -59,8 +67,6 @@ public class SDFAtlas : System.IDisposable
 
         _lookupEntries[slot] = new LookupEntry { X = coord.x, Y = coord.y, Z = coord.z, SlotIndex = slot };
         _lookupDirty = true;
-        
-        // set flatdata to null?
 
         return slot;
     }
@@ -83,6 +89,43 @@ public class SDFAtlas : System.IDisposable
         _lookupDirty = false;
     }
 
+    public void SyncChunkLookup(Vector3Int centerChunk, int halfDim)
+    {
+        halfDim = Mathf.Max(1, halfDim);
+        bool layoutChanged = centerChunk != _cachedCenterChunk || halfDim != _cachedHalfDim;
+
+        if (!layoutChanged && !_lookupDirty)
+            return;
+
+        int dim = halfDim * 2 + 1;
+        int cellCount = dim * dim * dim;
+        EnsureChunkToSlotCapacity(cellCount);
+
+        ChunkLookupOrigin = centerChunk - new Vector3Int(halfDim, halfDim, halfDim);
+        ChunkLookupDim = new Vector3Int(dim, dim, dim);
+
+        Array.Fill(_chunkToSlotEntries, -1, 0, cellCount);
+
+        foreach (var kvp in _coordToSlot)
+        {
+            Vector3Int rel = kvp.Key - ChunkLookupOrigin;
+            if (rel.x < 0 || rel.y < 0 || rel.z < 0 ||
+                rel.x >= dim || rel.y >= dim || rel.z >= dim)
+                continue;
+
+            int idx = rel.x + rel.y * dim + rel.z * dim * dim;
+            _chunkToSlotEntries[idx] = kvp.Value;
+        }
+
+        ChunkToSlotBuffer.SetData(_chunkToSlotEntries, 0, 0, cellCount);
+
+        _cachedCenterChunk = centerChunk;
+        _cachedHalfDim = halfDim;
+
+        if (_lookupDirty)
+            FlushLookup();
+    }
+
     public bool TryGetSlot(Vector3Int coord, out int slot) => _coordToSlot.TryGetValue(coord, out slot);
 
     public void ClearAll()
@@ -91,11 +134,25 @@ public class SDFAtlas : System.IDisposable
         foreach (var coord in coords)
             FreeSlot(coord);
         _lookupDirty = true;
+        _cachedCenterChunk = new Vector3Int(int.MinValue, int.MinValue, int.MinValue);
+    }
+
+    void EnsureChunkToSlotCapacity(int cellCount)
+    {
+        if (_chunkToSlotEntries != null &&
+            _chunkToSlotEntries.Length == cellCount &&
+            ChunkToSlotBuffer != null)
+            return;
+
+        _chunkToSlotEntries = new int[cellCount];
+        ChunkToSlotBuffer?.Release();
+        ChunkToSlotBuffer = new ComputeBuffer(cellCount, sizeof(int));
     }
 
     public void Dispose()
     {
         AtlasBuffer?.Release();
         LookupBuffer?.Release();
+        ChunkToSlotBuffer?.Release();
     }
 }

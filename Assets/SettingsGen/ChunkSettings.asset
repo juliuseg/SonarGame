@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ChunkStreamingSettings
   unloadBuffer: 0
   maxAsyncReadbacks: 10
-  surfaceRadius: 110
-  deepRadius: 110
+  surfaceRadius: 90
+  deepRadius: 90
   waterLevel: 20
   deepLevel: -10
   maxSdfSlots: 1024

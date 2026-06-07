@@ -1,6 +1,7 @@
 #pragma kernel BoidUpdate
 #pragma kernel FishBuilder
 #pragma kernel BuildMatrices
+#pragma kernel BuildDrawList
 #pragma kernel GridClear
 #pragma kernel GridCount
 #pragma kernel GridScanBuckets
@@ -27,6 +28,9 @@ RWStructuredBuffer<int> _SpawnRemaining;
 
 RWStructuredBuffer<float4x4> _InstanceMatrices;
 
+RWStructuredBuffer<uint> _DrawCounter;
+RWStructuredBuffer<uint> _DrawIndices;
+
 #include "Includes/FishSpatialGrid.hlsl"
 
 uint _Count;
@@ -49,7 +53,6 @@ float _SdfAvoidRadius;
 float _SdfAvoidWeight;
 float _SdfGradientDelta;
 float _SdfPenetrationForceMult;
-float _SdfMinClearance;
 float _SdfWallBrakeRadius;
 float _SdfWallBrakeStrength;
 float _SdfThreatSuppress;
@@ -172,6 +175,9 @@ SdfWallInfo SampleSdfWall(float3 pos)
         return w;
 
     w.sdf = SampleSdfAtlas(pos);
+    if (w.sdf >= _SdfAvoidRadius)
+        return w;
+
     float3 grad = SampleSdfAtlasGradient(pos, _SdfGradientDelta);
     float gradLen = length(grad);
     if (gradLen < 1e-6)
@@ -179,9 +185,6 @@ SdfWallInfo SampleSdfWall(float3 pos)
 
     w.gradDir = grad / gradLen;
     w.valid = 1;
-
-    if (w.sdf >= _SdfAvoidRadius)
-        return w;
 
     w.urgency = saturate((_SdfAvoidRadius - w.sdf) / max(_SdfAvoidRadius, 1e-4));
     if (w.sdf <= 0.0)
@@ -224,24 +227,6 @@ void SdfWallBrakeVelocity(SdfWallInfo w, inout float3 vel)
 
     if (w.sdf <= 0.0)
         vel *= 0.15;
-}
-
-void SdfCorrectPosition(inout float3 pos)
-{
-    if (_UseSdfAtlas == 0)
-        return;
-
-    float sdf = SampleSdfAtlas(pos);
-    if (sdf >= _SdfMinClearance)
-        return;
-
-    float3 grad = SampleSdfAtlasGradient(pos, _SdfGradientDelta);
-    float gradLen = length(grad);
-    if (gradLen < 1e-6)
-        return;
-
-    float3 dir = grad / gradLen;
-    pos += dir * (_SdfMinClearance - sdf);
 }
 
 float3 ThreatAvoidanceForce(float3 pos)
@@ -364,9 +349,27 @@ void BuildMatrices(uint3 id : SV_DispatchThreadID)
     if (i >= _Count)
         return;
 
+    if (_BoidState[i] != BOID_STATE_LOADED)
+        return;
+
     float3 pos = _Positions[i].xyz;
     float3 vel = _Velocities[i].xyz;
     _InstanceMatrices[i] = BuildFishMatrix(pos, vel);
+}
+
+[numthreads(64, 1, 1)]
+void BuildDrawList(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    if (_BoidState[i] != BOID_STATE_LOADED)
+        return;
+
+    uint drawIdx;
+    InterlockedAdd(_DrawCounter[0], 1, drawIdx);
+    _DrawIndices[drawIdx] = i;
 }
 
 [numthreads(64, 1, 1)]
@@ -451,7 +454,6 @@ void BoidUpdate(uint3 id : SV_DispatchThreadID)
     ApplySpeedLimits(velBefore, panicTimer, panicProximity, vel, panicTimer);
 
     pos += vel * _DeltaTime;
-    SdfCorrectPosition(pos);
 
     _Positions[i] = float4(pos, 1.0);
     _Velocities[i] = float4(vel, panicTimer);

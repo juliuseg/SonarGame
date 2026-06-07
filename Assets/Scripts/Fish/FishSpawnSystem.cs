@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
 
 /// <summary>
@@ -17,8 +18,13 @@ public class FishSpawnSystem : MonoBehaviour
     static readonly ProfilingSampler FishBuilderDispatchSampler = new("FishSpawn.FishBuilder");
     static readonly ProfilingSampler GridBuildDispatchSampler = new("FishSpawn.GridBuild");
     static readonly ProfilingSampler BoidUpdateDispatchSampler = new("FishSpawn.BoidUpdate");
-    
+    static readonly ProfilingSampler BuildMatricesDispatchSampler = new("FishSpawn.BuildMatrices");
+    static readonly ProfilingSampler BuildDrawListDispatchSampler = new("FishSpawn.BuildDrawList");
+    static readonly ProfilingSampler DrawIndirectSampler = new("FishSpawn.DrawIndirect");
+    readonly uint[] _loadedCountScratch = new uint[1];
+
     public bool Enabled { get; set; } = true;
+    public bool UseSdfAtlas { get; set; } = true;
 
     [Header("Collect and despawn")]
     [SerializeField] private float collectParam;
@@ -61,8 +67,6 @@ public class FishSpawnSystem : MonoBehaviour
     [Min(0.01f)] public float sdfGradientDelta = 0.5f;
     [Tooltip("Extra steer multiplier when sdf < 0 (inside solid).")]
     [Min(1f)] public float sdfPenetrationForceMult = 4f;
-    [Tooltip("Min sdf after correction — fish are pushed out to at least this.")]
-    [Min(0.01f)] public float sdfMinClearance = 0.15f;
     [Tooltip("Slow down when velocity points into the wall within this sdf range.")]
     [Min(0.01f)] public float sdfWallBrakeRadius = 2.5f;
     [Range(0f, 1f)] public float sdfWallBrakeStrength = 0.85f;
@@ -133,6 +137,8 @@ public class FishSpawnSystem : MonoBehaviour
     private ComputeBuffer _spawnCounterBuffer;
     private ComputeBuffer _threatBuffer;
     private ComputeBuffer _argsBuffer;
+    private ComputeBuffer _drawCounterBuffer;
+    private ComputeBuffer _drawIndicesBuffer;
     private ComputeBuffer _gridCellCountsBuffer;
     private ComputeBuffer _gridCellOffsetsBuffer;
     private ComputeBuffer _gridCellScatterBuffer;
@@ -150,6 +156,7 @@ public class FishSpawnSystem : MonoBehaviour
     private int _kernelBoid;
     private int _kernelBuilder;
     private int _kernelMatrices;
+    private int _kernelBuildDrawList;
     private int _kernelGridClear;
     private int _kernelGridCount;
     private int _kernelGridScanBuckets;
@@ -159,8 +166,11 @@ public class FishSpawnSystem : MonoBehaviour
     private int _kernelGridScatter;
     private uint[] _args;
     private int _argsSubMeshCapacity;
+    private bool _drawArgsStaticDirty = true;
     private float _nextLogTime;
     private bool _gpuInitialized;
+
+    private readonly int[] _drawCounterScratch = new int[1];
 
     public void Reload()
     {
@@ -200,6 +210,7 @@ public class FishSpawnSystem : MonoBehaviour
             _kernelBoid = fishCompute.FindKernel("BoidUpdate");
             _kernelBuilder = fishCompute.FindKernel("FishBuilder");
             _kernelMatrices = fishCompute.FindKernel("BuildMatrices");
+            _kernelBuildDrawList = fishCompute.FindKernel("BuildDrawList");
             _kernelGridClear = fishCompute.FindKernel("GridClear");
             _kernelGridCount = fishCompute.FindKernel("GridCount");
             _kernelGridScanBuckets = fishCompute.FindKernel("GridScanBuckets");
@@ -224,8 +235,11 @@ public class FishSpawnSystem : MonoBehaviour
         _spawnVelBuffer = new ComputeBuffer(maxInstances, sizeof(float) * 4);
         _spawnCounterBuffer = new ComputeBuffer(1, sizeof(int));
         _threatBuffer = new ComputeBuffer(threatCapacity, sizeof(float) * 4);
+        _drawCounterBuffer = new ComputeBuffer(1, sizeof(uint));
+        _drawIndicesBuffer = new ComputeBuffer(maxInstances, sizeof(uint));
 
         EnsureGridBuffers(MaxGridCells, MaxGridCells / GridScanGroupSize);
+        _drawArgsStaticDirty = true;
 
         InitializeGpuPool();
         EnsureArgsCapacity(fishMesh);
@@ -245,6 +259,8 @@ public class FishSpawnSystem : MonoBehaviour
         _spawnCounterBuffer?.Release();
         _threatBuffer?.Release();
         _argsBuffer?.Release();
+        _drawCounterBuffer?.Release();
+        _drawIndicesBuffer?.Release();
         ReleaseGridBuffers();
 
         _boidStateBuffer = null;
@@ -256,7 +272,10 @@ public class FishSpawnSystem : MonoBehaviour
         _spawnCounterBuffer = null;
         _threatBuffer = null;
         _argsBuffer = null;
+        _drawCounterBuffer = null;
+        _drawIndicesBuffer = null;
         _argsSubMeshCapacity = 0;
+        _drawArgsStaticDirty = true;
     }
 
     private void InitializeGpuPool()
@@ -333,6 +352,8 @@ public class FishSpawnSystem : MonoBehaviour
             _drawMaterials[i] = new Material(fishMaterials[i]);
             _drawMaterials[i].enableInstancing = true;
         }
+
+        _drawArgsStaticDirty = true;
     }
 
     private void DestroyDrawMaterials()
@@ -375,6 +396,28 @@ public class FishSpawnSystem : MonoBehaviour
             _argsSubMeshCapacity,
             sizeof(uint) * ArgsStride,
             ComputeBufferType.IndirectArguments);
+        _drawArgsStaticDirty = true;
+    }
+
+    void EnsureStaticDrawArgs()
+    {
+        if (!_drawArgsStaticDirty || _argsBuffer == null || fishMesh == null)
+            return;
+
+        EnsureArgsCapacity(fishMesh);
+        int subMeshCount = _drawMaterials != null ? _drawMaterials.Length : fishMesh.subMeshCount;
+        for (int s = 0; s < subMeshCount; s++)
+        {
+            int offset = s * ArgsStride;
+            _args[offset] = (uint)fishMesh.GetIndexCount(s);
+            _args[offset + 1] = 0;
+            _args[offset + 2] = (uint)fishMesh.GetIndexStart(s);
+            _args[offset + 3] = (uint)fishMesh.GetBaseVertex(s);
+            _args[offset + 4] = 0;
+        }
+
+        _argsBuffer.SetData(_args, 0, 0, subMeshCount * ArgsStride);
+        _drawArgsStaticDirty = false;
     }
 
     public void ClearAllFish()
@@ -422,7 +465,21 @@ public class FishSpawnSystem : MonoBehaviour
         DispatchBuildSpatialGrid();
         DispatchBoidUpdate();
         DispatchBuildMatrices();
+        DispatchBuildDrawList();
         DrawIndirect();
+    }
+
+    Bounds ComputeFishDrawBounds()
+    {
+        float radius = GetDespawnRadius();
+        float verticalHalf = radius / 1.8f;
+        float padding = Mathf.Max(fishScale, boidNeighborRadius);
+        return new Bounds(
+            _target.position,
+            new Vector3(
+                (radius + padding) * 2f,
+                (verticalHalf + padding) * 2f,
+                (radius + padding) * 2f));
     }
 
     private float GetStreamRadius() =>
@@ -997,16 +1054,20 @@ public class FishSpawnSystem : MonoBehaviour
 
     private void BindSdfAndThreat(int kernel)
     {
-        bool useAtlas = _sdfAtlas != null && _mcSettings != null;
+        bool useAtlas = UseSdfAtlas && _sdfAtlas != null && _mcSettings != null;
         if (useAtlas)
-            _sdfAtlas.FlushLookup();
+        {
+            Vector3Int centerChunk = _chunkManager.WorldToChunk(_target.position);
+            int halfDim = ChunkMath.GetStreamHalfRangeChunks(
+                _target.position, _chunkSizeWorld, _streamingSettings);
+            _sdfAtlas.SyncChunkLookup(centerChunk, halfDim);
+        }
 
         fishCompute.SetInt("_UseSdfAtlas", useAtlas ? 1 : 0);
         fishCompute.SetFloat("_SdfAvoidRadius", sdfAvoidRadius);
         fishCompute.SetFloat("_SdfAvoidWeight", sdfAvoidWeight);
         fishCompute.SetFloat("_SdfGradientDelta", sdfGradientDelta);
         fishCompute.SetFloat("_SdfPenetrationForceMult", sdfPenetrationForceMult);
-        fishCompute.SetFloat("_SdfMinClearance", sdfMinClearance);
         fishCompute.SetFloat("_SdfWallBrakeRadius", sdfWallBrakeRadius);
         fishCompute.SetFloat("_SdfWallBrakeStrength", sdfWallBrakeStrength);
         fishCompute.SetFloat("_SdfThreatSuppress", sdfThreatSuppress);
@@ -1025,7 +1086,7 @@ public class FishSpawnSystem : MonoBehaviour
         if (!useAtlas)
             return;
 
-        fishCompute.SetBuffer(kernel, "_Lookup", _sdfAtlas.LookupBuffer);
+        fishCompute.SetBuffer(kernel, "_ChunkToSlot", _sdfAtlas.ChunkToSlotBuffer);
         fishCompute.SetBuffer(kernel, "_Atlas", _sdfAtlas.AtlasBuffer);
         fishCompute.SetVector("_ChunkSize", _chunkSizeWorld);
         fishCompute.SetVector("_Scale", _mcSettings.scale);
@@ -1034,7 +1095,14 @@ public class FishSpawnSystem : MonoBehaviour
             _mcSettings.chunkDims.y,
             _mcSettings.chunkDims.z);
         fishCompute.SetInt("_SlotSize", _sdfAtlas.SlotSize);
-        fishCompute.SetInt("_LookupCount", _sdfAtlas.MaxSlots);
+        fishCompute.SetInts("_ChunkLookupOrigin",
+            _sdfAtlas.ChunkLookupOrigin.x,
+            _sdfAtlas.ChunkLookupOrigin.y,
+            _sdfAtlas.ChunkLookupOrigin.z);
+        fishCompute.SetInts("_ChunkLookupDim",
+            _sdfAtlas.ChunkLookupDim.x,
+            _sdfAtlas.ChunkLookupDim.y,
+            _sdfAtlas.ChunkLookupDim.z);
     }
 
     private int UploadThreatPositions()
@@ -1114,7 +1182,34 @@ public class FishSpawnSystem : MonoBehaviour
             meshFix.x, meshFix.y, meshFix.z, meshFix.w));
 
         int groups = Mathf.CeilToInt(maxInstances / 64f);
-        fishCompute.Dispatch(_kernelMatrices, groups, 1, 1);
+        DispatchProfiled(BuildMatricesDispatchSampler, _kernelMatrices, groups);
+    }
+
+    void DispatchBuildDrawList()
+    {
+        if (fishCompute == null || _drawCounterBuffer == null || _drawIndicesBuffer == null || _argsBuffer == null)
+            return;
+
+        EnsureStaticDrawArgs();
+
+        _drawCounterScratch[0] = 0;
+        _drawCounterBuffer.SetData(_drawCounterScratch);
+
+        int subMeshCount = _drawMaterials != null ? _drawMaterials.Length : fishMesh.subMeshCount;
+        int fishGroups = Mathf.CeilToInt(maxInstances / 64f);
+
+        BindSimulationBuffers(_kernelBuildDrawList);
+        fishCompute.SetBuffer(_kernelBuildDrawList, "_DrawCounter", _drawCounterBuffer);
+        fishCompute.SetBuffer(_kernelBuildDrawList, "_DrawIndices", _drawIndicesBuffer);
+        fishCompute.SetInt("_Count", maxInstances);
+
+        DispatchProfiled(BuildDrawListDispatchSampler, _kernelBuildDrawList, fishGroups);
+
+        _drawCounterBuffer.GetData(_loadedCountScratch);
+        uint instanceCount = _loadedCountScratch[0];
+        for (int s = 0; s < subMeshCount; s++)
+            _args[s * ArgsStride + 1] = instanceCount;
+        _argsBuffer.SetData(_args, 0, 0, subMeshCount * ArgsStride);
     }
 
     private void DrawIndirect()
@@ -1122,26 +1217,16 @@ public class FishSpawnSystem : MonoBehaviour
         if (!CanDrawFish())
             return;
 
-        EnsureArgsCapacity(fishMesh);
+        Profiler.BeginSample(DrawIndirectSampler.name);
+
+        EnsureStaticDrawArgs();
         int subMeshCount = _drawMaterials.Length;
-        uint instanceCount = (uint)maxInstances;
+        Bounds bounds = ComputeFishDrawBounds();
 
-        for (int s = 0; s < subMeshCount; s++)
-        {
-            int offset = s * ArgsStride;
-            _args[offset] = (uint)fishMesh.GetIndexCount(s);
-            _args[offset + 1] = instanceCount;
-            _args[offset + 2] = (uint)fishMesh.GetIndexStart(s);
-            _args[offset + 3] = (uint)fishMesh.GetBaseVertex(s);
-            _args[offset + 4] = 0;
-        }
-
-        _argsBuffer.SetData(_args, 0, 0, subMeshCount * ArgsStride);
-
-        var bounds = new Bounds(_target.position, Vector3.one * 10000f);
         for (int s = 0; s < subMeshCount; s++)
         {
             _drawMaterials[s].SetBuffer("_InstanceMatrices", _matricesBuffer);
+            _drawMaterials[s].SetBuffer("_DrawIndices", _drawIndicesBuffer);
             Graphics.DrawMeshInstancedIndirect(
                 fishMesh,
                 s,
@@ -1152,6 +1237,8 @@ public class FishSpawnSystem : MonoBehaviour
         }
 
         LogDrawCount(maxInstances);
+
+        Profiler.EndSample();
     }
 
     private void LogDrawCount(int count)

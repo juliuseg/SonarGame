@@ -15,6 +15,16 @@ public static class ChunkMath
         return Mathf.Lerp(streamingSettings.surfaceRadius, streamingSettings.deepRadius, t);
     }
 
+    public static int GetStreamHalfRangeChunks(
+        Vector3 position,
+        Vector3 chunkSize,
+        ChunkStreamingSettings streamingSettings)
+    {
+        float radius = GetDynamicRadius(position, streamingSettings);
+        float minAxis = Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z));
+        return Mathf.CeilToInt((radius + streamingSettings.unloadBuffer) / minAxis);
+    }
+
     public static bool IsOutOfRange(Vector3 currentPos, Vector3 worldPos, float radius)
     {
         Vector3 dif = currentPos - worldPos;

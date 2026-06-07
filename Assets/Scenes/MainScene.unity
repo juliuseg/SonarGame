@@ -5633,14 +5633,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuntimeDebugController
   menuLabel: {fileID: 88939043}
-  generateMesh: 1
+  generateMesh: 0
   generateSdf: 1
   chunkColliders: 1
-  spawnInstancingMeshes: 1
-  fishSystem: 0
+  spawnInstancingMeshes: 0
+  fishSystem: 1
+  fishSdfAvoidance: 1
   fishMaxInstances: 2000
   targetFrameRate: -1
-  showFps: 0
+  showFps: 1
   fpsUiObject: {fileID: 1779357000}
   volumetricFog: 0
   volumetricFogFeature: {fileID: 3464338643130440663, guid: f288ae1f4751b564a96ac7587541f7a2, type: 2}

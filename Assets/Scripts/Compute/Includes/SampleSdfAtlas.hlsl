@@ -1,31 +1,26 @@
 // Shared SDF atlas sampling (matches SDFAtlasTest.compute / ChunkManager.TryGetSDFValue).
 
-struct LookupEntry
-{
-    int x, y, z, slotIndex;
-};
-
-StructuredBuffer<LookupEntry> _Lookup;
+StructuredBuffer<int> _ChunkToSlot;
 StructuredBuffer<float> _Atlas;
 
 float3 _ChunkSize;
 float3 _Scale;
 int3 _ChunkDims;
 int _SlotSize;
-int _LookupCount;
+int3 _ChunkLookupOrigin;
+int3 _ChunkLookupDim;
 
 int FindSdfSlot(int3 chunkCoord)
 {
-    for (int i = 0; i < _LookupCount; i++)
-    {
-        LookupEntry e = _Lookup[i];
-        if (e.slotIndex >= 0 &&
-            e.x == chunkCoord.x &&
-            e.y == chunkCoord.y &&
-            e.z == chunkCoord.z)
-            return e.slotIndex;
-    }
-    return -1;
+    int3 rel = chunkCoord - _ChunkLookupOrigin;
+    if (any(rel < int3(0, 0, 0)) ||
+        rel.x >= _ChunkLookupDim.x ||
+        rel.y >= _ChunkLookupDim.y ||
+        rel.z >= _ChunkLookupDim.z)
+        return -1;
+
+    int idx = rel.x + rel.y * _ChunkLookupDim.x + rel.z * _ChunkLookupDim.x * _ChunkLookupDim.y;
+    return _ChunkToSlot[idx];
 }
 
 float ReadSdfVoxel(int3 chunkCoord, int x, int y, int z)

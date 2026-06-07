@@ -11,6 +11,7 @@ public class RuntimeDebugController : MonoBehaviour
         ChunkColliders,
         SpawnInstancingMeshes,
         FishSystem,
+        FishSdfAvoidance,
         VolumetricFog,
         DebugLights,
         ShowFps,
@@ -25,6 +26,7 @@ public class RuntimeDebugController : MonoBehaviour
         DebugOption.ChunkColliders,
         DebugOption.SpawnInstancingMeshes,
         DebugOption.FishSystem,
+        DebugOption.FishSdfAvoidance,
         DebugOption.VolumetricFog,
         DebugOption.DebugLights,
         DebugOption.ShowFps,
@@ -46,6 +48,7 @@ public class RuntimeDebugController : MonoBehaviour
     [Header("Spawning")]
     [SerializeField] bool spawnInstancingMeshes = true;
     [SerializeField] bool fishSystem = true;
+    [SerializeField] bool fishSdfAvoidance = true;
     [SerializeField] int fishMaxInstances = 5000;
 
     [Header("Performance")]
@@ -71,6 +74,7 @@ public class RuntimeDebugController : MonoBehaviour
     bool _appliedChunkColliders = true;
     bool _appliedSpawnInstancingMeshes = true;
     bool _appliedFishSystem = true;
+    bool _appliedFishSdfAvoidance = true;
     bool _appliedVolumetricFog;
     bool _appliedDebugLights;
     bool _appliedShowFps;
@@ -103,6 +107,7 @@ public class RuntimeDebugController : MonoBehaviour
         _appliedChunkColliders = chunkColliders;
         _appliedSpawnInstancingMeshes = spawnInstancingMeshes;
         _appliedFishSystem = fishSystem;
+        _appliedFishSdfAvoidance = fishSdfAvoidance;
         _appliedVolumetricFog = volumetricFog;
         _appliedDebugLights = debugLights;
         _appliedShowFps = showFps;
@@ -201,6 +206,9 @@ public class RuntimeDebugController : MonoBehaviour
             case DebugOption.FishSystem:
                 fishSystem = direction > 0;
                 break;
+            case DebugOption.FishSdfAvoidance:
+                fishSdfAvoidance = direction > 0;
+                break;
             case DebugOption.VolumetricFog:
                 volumetricFog = direction > 0;
                 break;
@@ -264,6 +272,7 @@ public class RuntimeDebugController : MonoBehaviour
         DebugOption.ChunkColliders => "chunkColliders",
         DebugOption.SpawnInstancingMeshes => "spawnInstancingMeshes",
         DebugOption.FishSystem => "fishSystem",
+        DebugOption.FishSdfAvoidance => "fishSdfAvoidance",
         DebugOption.VolumetricFog => "volumetricFog",
         DebugOption.DebugLights => "debugLights",
         DebugOption.ShowFps => "showFps",
@@ -279,6 +288,7 @@ public class RuntimeDebugController : MonoBehaviour
         DebugOption.ChunkColliders => chunkColliders.ToString().ToLower(),
         DebugOption.SpawnInstancingMeshes => spawnInstancingMeshes.ToString().ToLower(),
         DebugOption.FishSystem => fishSystem.ToString().ToLower(),
+        DebugOption.FishSdfAvoidance => fishSdfAvoidance.ToString().ToLower(),
         DebugOption.VolumetricFog => volumetricFog.ToString().ToLower(),
         DebugOption.DebugLights => debugLights.ToString().ToLower(),
         DebugOption.ShowFps => showFps.ToString().ToLower(),
@@ -344,6 +354,7 @@ public class RuntimeDebugController : MonoBehaviour
                 _fishSpawnSystem.ClearAllFish();
 
             _fishSpawnSystem.Enabled = fishSystem && generateSdf;
+            _fishSpawnSystem.UseSdfAtlas = fishSdfAvoidance;
 
             if (fishMaxInstances != _appliedFishMaxInstances)
             {
@@ -354,6 +365,7 @@ public class RuntimeDebugController : MonoBehaviour
         }
 
         _appliedFishSystem = fishSystem;
+        _appliedFishSdfAvoidance = fishSdfAvoidance;
 
         if (targetFrameRate != _appliedTargetFrameRate)
         {

@@ -14,16 +14,22 @@ public class SDFAtlasTest : MonoBehaviour
     private ChunkManager _chunkManager;
     private SDFAtlas _atlas;
     private MCSettings _mcSettings;
+    private ChunkStreamingSettings _streamingSettings;
 
     private ComputeBuffer _resultBuffer;
     private int _kernel;
     private bool _readbackPending;
 
-    public void Init(ChunkManager chunkManager, SDFAtlas atlas, MCSettings mcSettings)
+    public void Init(
+        ChunkManager chunkManager,
+        SDFAtlas atlas,
+        MCSettings mcSettings,
+        ChunkStreamingSettings streamingSettings)
     {
         _chunkManager = chunkManager;
         _atlas = atlas;
         _mcSettings = mcSettings;
+        _streamingSettings = streamingSettings;
 
         _kernel = testShader.FindKernel("SampleSDF");
         _resultBuffer = new ComputeBuffer(1, sizeof(float));
@@ -37,11 +43,13 @@ public class SDFAtlasTest : MonoBehaviour
         Vector3 pos = samplePoint.position;
         Vector3 chunkSize = Vector3.Scale(_mcSettings.scale, _mcSettings.chunkDims);
 
-        // CPU reference value
         _chunkManager.TryGetSDFValue(pos, out cpuSdfValue);
 
-        // GPU lookup via atlas
-        testShader.SetBuffer(_kernel, "_Lookup", _atlas.LookupBuffer);
+        Vector3Int centerChunk = _chunkManager.WorldToChunk(pos);
+        int halfDim = ChunkMath.GetStreamHalfRangeChunks(pos, chunkSize, _streamingSettings);
+        _atlas.SyncChunkLookup(centerChunk, halfDim);
+
+        testShader.SetBuffer(_kernel, "_ChunkToSlot", _atlas.ChunkToSlotBuffer);
         testShader.SetBuffer(_kernel, "_Atlas", _atlas.AtlasBuffer);
         testShader.SetBuffer(_kernel, "_Result", _resultBuffer);
         testShader.SetVector("_SamplePos", pos);
@@ -49,7 +57,14 @@ public class SDFAtlasTest : MonoBehaviour
         testShader.SetVector("_Scale", _mcSettings.scale);
         testShader.SetInts("_ChunkDims", _mcSettings.chunkDims.x, _mcSettings.chunkDims.y, _mcSettings.chunkDims.z);
         testShader.SetInt("_SlotSize", _atlas.SlotSize);
-        testShader.SetInt("_LookupCount", _atlas.MaxSlots);
+        testShader.SetInts("_ChunkLookupOrigin",
+            _atlas.ChunkLookupOrigin.x,
+            _atlas.ChunkLookupOrigin.y,
+            _atlas.ChunkLookupOrigin.z);
+        testShader.SetInts("_ChunkLookupDim",
+            _atlas.ChunkLookupDim.x,
+            _atlas.ChunkLookupDim.y,
+            _atlas.ChunkLookupDim.z);
 
         testShader.Dispatch(_kernel, 1, 1, 1);
 

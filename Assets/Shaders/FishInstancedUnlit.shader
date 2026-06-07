@@ -21,6 +21,7 @@ Shader "Fish/InstancedIndirect"
 
             // Bound from C# via Material.SetBuffer (MPB does not reliably work with indirect + SSBO).
             StructuredBuffer<float4x4> _InstanceMatrices;
+            StructuredBuffer<uint> _DrawIndices;
             float4 _BaseColor;
 
             struct Attributes
@@ -36,7 +37,7 @@ Shader "Fish/InstancedIndirect"
 
             Varyings Vert(Attributes input)
             {
-                float4x4 m = _InstanceMatrices[input.instanceID];
+                float4x4 m = _InstanceMatrices[_DrawIndices[input.instanceID]];
                 float3 worldPos = mul(m, float4(input.positionOS.xyz, 1.0)).xyz;
                 Varyings o;
                 o.positionCS = TransformWorldToHClip(worldPos);
