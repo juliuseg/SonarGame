@@ -100,3 +100,6 @@ InitTestScene*.unity*
 
 # Render pipeline as package:
 /Packages/com.unity.render-pipelines.universal@13e5115b98bf/
+
+# graphify knowledge graph output
+graphify-out/

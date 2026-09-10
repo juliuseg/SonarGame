@@ -41,6 +41,9 @@ public class Bootstrap : MonoBehaviour
 
     [Header("Enemies")]
     [SerializeField] private SeaSnakeSpawnSystem seaSnakeSpawnSystem;
+
+    [Header("Pathfinding")]
+    [SerializeField] private PathfindingGraphSettings pathfindingGraphSettings;
     
     private ChunkStreamer _chunkStreamer;
     private SpawnManager _spawnManager;
@@ -49,6 +52,7 @@ public class Bootstrap : MonoBehaviour
     private SDFAtlas _sdfAtlas;
     private AutomationLogicSystem _automationLogic;
     private Inventory _inventory;
+    private PathfindingGraphSystem _pathfindingGraphSystem;
 
     void Awake()
     {
@@ -104,7 +108,15 @@ public class Bootstrap : MonoBehaviour
 
         if (uiController != null)
             uiController.Init(_inventory);
+
+        if (pathfindingGraphSettings != null)
+        {
+            var pathfindingBuilder = new PathfindingGraphBuilder(pathfindingGraphSettings);
+            _pathfindingGraphSystem = new PathfindingGraphSystem(pathfindingBuilder, this);
+        }
     }
+
+    public PathfindingGraphSystem PathfindingGraphSystem => _pathfindingGraphSystem;
 
     void Update()
     {

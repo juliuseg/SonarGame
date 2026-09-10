@@ -10,8 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 4393061782156441770}
   - component: {fileID: 7875504794590251432}
-  - component: {fileID: 7289028735568057172}
-  - component: {fileID: 8287681856710595134}
   - component: {fileID: 9095257698872838501}
   - component: {fileID: 6091385454925735105}
   - component: {fileID: 1013811240462360501}
@@ -67,49 +65,14 @@ MonoBehaviour:
   - {fileID: 0}
   - {fileID: 0}
   - {fileID: 0}
-  sdfVisualizer: {fileID: 7289028735568057172}
+  sdfVisualizer: {fileID: 0}
   toolModeController: {fileID: 0}
   runtimeDebug: {fileID: 6091385454925735105}
-  sdfAtlasTest: {fileID: 8287681856710595134}
+  sdfAtlasTest: {fileID: 0}
   sdfAtlasTestShader: {fileID: 7200000, guid: deef3aad98ae4025a37206c19f8aa98a, type: 3}
   uiController: {fileID: 0}
   fishSpawnSystem: {fileID: 0}
   seaSnakeSpawnSystem: {fileID: 1013811240462360501}
---- !u!114 &7289028735568057172
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 158361632268675231}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: eff3afd883add46e8ab7890a6ead6d10, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: '::'
-  useSingleChunkMode: 0
-  debugChunkCoord: {x: 0, y: 0, z: 0}
-  sdfTarget: {fileID: 0}
-  followRegionScale: 1
-  colorMultiplier: 1
-  alpha: 0.3
-  maxAbsDistance: 1
---- !u!114 &8287681856710595134
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 158361632268675231}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: eee7c1abe9b0464cbb84f7ed142395f0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SDFAtlasTest
-  samplePoint: {fileID: 0}
-  testShader: {fileID: 7200000, guid: deef3aad98ae4025a37206c19f8aa98a, type: 3}
-  gpuSdfValue: 0
-  cpuSdfValue: 0
 --- !u!114 &9095257698872838501
 MonoBehaviour:
   m_ObjectHideFlags: 0

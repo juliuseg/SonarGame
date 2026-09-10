@@ -114,6 +114,8 @@ public class SeaSnakeSpawnSystem : MonoBehaviour
         GameObject instance = Instantiate(settings.prefab, spawnPos, rotation);
         _spawned.Add(instance);
 
+        EnemySnakeState.GetOrCreate(instance.transform);
+
         RandomSteeredMover mover = instance.GetComponentInChildren<RandomSteeredMover>();
         if (mover != null)
         {

@@ -1,13 +1,12 @@
 using UnityEngine;
 
-/// TODO:
-/// Make the sampling on GPU to match the mesh. 
-
 public class RandomSteeredMover : MonoBehaviour
 {
     [Header("Kinematics")]
     public float speed = 4f;
     public float maxTurnRateDegPerSec = 90f;
+    [Tooltip("Minimum angle from world up/down. 0 disables. 10 = pitch stays between 10° and 170° from up.")]
+    [Range(0f, 89f)] public float pitchLimitFromVerticalDeg = 10f;
 
     [Header("Speed Variation")]
     public float speedMinMultiplier = 0.8f;
@@ -60,9 +59,13 @@ public class RandomSteeredMover : MonoBehaviour
     public float range = 5f;
     public int magazineSize = 5;
     public float reloadInterval = 1f;
+    [Tooltip("Seconds to wind up before the first shot in a burst.")]
+    public float windUpDuration = 0.35f;
+    [Tooltip("After losing line-of-sight, mouth stays open and can resume firing for this long.")]
+    public float attackGraceDuration = 0.4f;
 
-    [Header("SDF")]
     private ChunkManager _chunkManager;
+    private EnemySnakeState _state;
 
     [Header("Initial State")]
     public int seed = 0;
@@ -79,35 +82,61 @@ public class RandomSteeredMover : MonoBehaviour
     private bool _fleeing;
     private float _fleeCountdown;
     private bool _wasInFleeZone;
+    private bool _ready;
+    private bool _warnedNoSdf;
+    private float _shootCharge;
+    private float _attackGraceRemaining;
 
     public float WavePhase => _wavePhase;
 
+    private bool UseSdfAvoidance => _chunkManager != null;
+
     const float InitialHeadingYawJitterDeg = 30f;
+
+    void Awake()
+    {
+        _state = EnemySnakeState.GetOrCreate(transform);
+    }
+
+    void Start()
+    {
+        if (!_ready)
+            SetupState(target, warnNoSdf: true);
+    }
 
     public void Init(ChunkManager chunkManager, Transform initialHeadingTarget = null)
     {
         _chunkManager = chunkManager;
+        Transform headingTarget = initialHeadingTarget != null ? initialHeadingTarget : target;
+        SetupState(headingTarget, warnNoSdf: false);
+    }
 
+    void SetupState(Transform headingTarget, bool warnNoSdf)
+    {
         if (seed == 0)
             seed = UnityEngine.Random.Range(0, 1_000_000);
         _rng = new System.Random(seed);
 
-        if (_chunkManager == null)
-        {
-            Debug.LogError("ChunkManager not found");
-            return;
-        }
-
-        Transform headingTarget = initialHeadingTarget != null ? initialHeadingTarget : target;
-        _dir = ComputeInitialHeading(headingTarget);
+        _dir = ClampPitch(ComputeInitialHeading(headingTarget));
         initialDirection = _dir;
         _biasDir = _dir;
         _nextJitterT = Time.time + (jitterHz > 0f ? 1f / jitterHz : 999f);
         _ammo = magazineSize;
         _nextReloadTime = Time.time + reloadInterval;
+        _shootCharge = 0f;
+        _attackGraceRemaining = 0f;
+        PublishShootCharge();
 
         if (_dir.sqrMagnitude > 1e-6f)
             transform.rotation = Quaternion.LookRotation(_dir, Vector3.up);
+
+        _ready = true;
+
+        if (warnNoSdf && !UseSdfAvoidance && !_warnedNoSdf)
+        {
+            Debug.LogWarning($"[{name}] RandomSteeredMover running without Init(ChunkManager) — SDF wall avoidance disabled.");
+            _warnedNoSdf = true;
+        }
     }
 
     Vector3 ComputeInitialHeading(Transform headingTarget)
@@ -129,6 +158,9 @@ public class RandomSteeredMover : MonoBehaviour
 
     void Update()
     {
+        if (!_ready)
+            SetupState(target, warnNoSdf: true);
+
         float dt = Time.deltaTime;
 
         // --- distance to target ---
@@ -144,7 +176,7 @@ public class RandomSteeredMover : MonoBehaviour
         // --- jitter: update bias direction periodically ---
         if (Time.time >= _nextJitterT)
         {
-            _biasDir = ComputeBiasDirection(distToTarget, inAttackRange, inTargetAvoidanceRange);
+            _biasDir = ClampPitch(ComputeBiasDirection(distToTarget, inAttackRange, inTargetAvoidanceRange));
             _nextJitterT += jitterHz > 0f ? 1f / jitterHz : 999f;
         }
 
@@ -152,14 +184,19 @@ public class RandomSteeredMover : MonoBehaviour
         Vector3 avoidBias = Vector3.zero;
         Vector3 gradient = Vector3.zero;
         float sdfValue = float.MaxValue;
-        bool hasSdf = _chunkManager.TryGetSDFValue(transform.position, out sdfValue);
+        bool hasSdf = false;
 
-        if (hasSdf && sdfValue < avoidanceRadius)
+        if (UseSdfAvoidance)
         {
-            if (_chunkManager.TrySampleSDFGradient(transform.position, out gradient))
+            hasSdf = _chunkManager.TryGetSDFValue(transform.position, out sdfValue);
+
+            if (hasSdf && sdfValue < avoidanceRadius)
             {
-                float t = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
-                avoidBias = gradient.normalized * avoidanceStrength * Mathf.Pow(t, 0.7f);
+                if (_chunkManager.TrySampleSDFGradient(transform.position, out gradient))
+                {
+                    float t = Mathf.Clamp01((avoidanceRadius - sdfValue) / avoidanceRadius);
+                    avoidBias = gradient.normalized * avoidanceStrength * Mathf.Pow(t, 0.7f);
+                }
             }
         }
 
@@ -184,9 +221,11 @@ public class RandomSteeredMover : MonoBehaviour
             }
         }
 
+        desired = ClampPitch(desired);
+
         // --- apply turning ---
         float maxRadians = Mathf.Deg2Rad * maxTurnRateDegPerSec * dt * turningBoost;
-        _dir = Vector3.RotateTowards(_dir, desired, maxRadians, 0f);
+        _dir = ClampPitch(Vector3.RotateTowards(_dir, desired, maxRadians, 0f));
         if (_dir.sqrMagnitude < 1e-9f) _dir = Vector3.forward;
 
         // --- speed ---
@@ -204,7 +243,7 @@ public class RandomSteeredMover : MonoBehaviour
         }
 
         // --- shoot ---
-        TryShoot();
+        UpdateShooting(dt);
 
         // --- move with time-based body wave (XZ only) ---
         float speedRatio = speed > 1e-6f ? currentSpeed / speed : 1f;
@@ -328,17 +367,54 @@ public class RandomSteeredMover : MonoBehaviour
         return result * slowFactor;
     }
 
-    private void TryShoot()
+    bool HasShotLine()
+    {
+        if (_ammo <= 0 || target == null || bulletPrefab == null) return false;
+
+        return Physics.Raycast(transform.position, _dir, out RaycastHit hit, range)
+               && hit.transform == target;
+    }
+
+    void UpdateShooting(float dt)
+    {
+        float rate = windUpDuration > 1e-6f ? 1f / windUpDuration : 100f;
+        bool hasLine = HasShotLine();
+
+        if (hasLine)
+        {
+            _attackGraceRemaining = attackGraceDuration;
+
+            if (_shootCharge < 1f)
+                _shootCharge = Mathf.MoveTowards(_shootCharge, 1f, rate * dt);
+            else
+                Fire();
+        }
+        else if (_shootCharge >= 1f && _attackGraceRemaining > 0f)
+        {
+            _attackGraceRemaining -= dt;
+        }
+        else if (_shootCharge > 0f)
+        {
+            _shootCharge = Mathf.MoveTowards(_shootCharge, 0f, rate * dt);
+        }
+
+        PublishShootCharge();
+    }
+
+    void Fire()
     {
         if (_ammo <= 0 || target == null || bulletPrefab == null) return;
 
-        if (Physics.Raycast(transform.position, _dir, out RaycastHit hit, range) && hit.transform == target)
-        {
-            _ammo--;
-            var bullet = Instantiate(bulletPrefab, transform.position, Quaternion.identity);
-            if (bullet.TryGetComponent<EnemyBulletController>(out var bulletCont))
-                bulletCont.Shoot(_dir.normalized);
-        }
+        _ammo--;
+        var bullet = Instantiate(bulletPrefab, transform.position, Quaternion.identity);
+        if (bullet.TryGetComponent<EnemyBulletController>(out var bulletCont))
+            bulletCont.Shoot(_dir.normalized);
+    }
+
+    void PublishShootCharge()
+    {
+        if (_state != null)
+            _state.ShootCharge = _shootCharge;
     }
 
     Vector3 ApplyBodyWave(Vector3 forward, float dt, float speedRatio)
@@ -362,6 +438,31 @@ public class RandomSteeredMover : MonoBehaviour
 
     // ---- utilities ----
 
+    Vector3 ClampPitch(Vector3 dir)
+    {
+        if (pitchLimitFromVerticalDeg <= 0f || dir.sqrMagnitude < 1e-9f)
+            return dir;
+
+        dir = dir.normalized;
+        float upDot = Vector3.Dot(dir, Vector3.up);
+        float maxUpDot = Mathf.Cos(pitchLimitFromVerticalDeg * Mathf.Deg2Rad);
+        float clampedDot = Mathf.Clamp(upDot, -maxUpDot, maxUpDot);
+        if (Mathf.Approximately(upDot, clampedDot))
+            return dir;
+
+        Vector3 horizontal = Vector3.ProjectOnPlane(dir, Vector3.up);
+        if (horizontal.sqrMagnitude < 1e-9f)
+        {
+            horizontal = Vector3.ProjectOnPlane(_dir.sqrMagnitude > 1e-9f ? _dir : transform.forward, Vector3.up);
+            if (horizontal.sqrMagnitude < 1e-9f)
+                horizontal = Vector3.forward;
+        }
+        horizontal.Normalize();
+
+        float horizontalLen = Mathf.Sqrt(Mathf.Max(0f, 1f - clampedDot * clampedDot));
+        return (horizontal * horizontalLen + Vector3.up * clampedDot).normalized;
+    }
+
     Vector3 RandomUnitVector()
     {
         double u = 2.0 * _rng.NextDouble() - 1.0;
@@ -373,14 +474,4 @@ public class RandomSteeredMover : MonoBehaviour
             (float)u);
     }
 
-#if UNITY_EDITOR
-    void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.white;
-        Vector3 p = transform.position;
-        Vector3 v = (Application.isPlaying ? _dir : initialDirection.normalized) * Mathf.Max(0.5f, speed * 0.25f);
-        Gizmos.DrawLine(p, p + v);
-        Gizmos.DrawSphere(p + v, 0.03f);
-    }
-#endif
 }
