@@ -4,24 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-SonarGame is a Unity 6 (`6000.4.8f1`) URP game about a submarine exploring procedurally generated underwater caves. It uses the new Input System (`Assets/InputSystem/InputSystem_Actions.inputactions`). The main scene is `Assets/Scenes/MainScene.unity`; the other scenes are test beds (IK crawlers, snakes, fish, tubes).
+SonarGame is a Unity 6 (`6000.4.8f1`) URP game about a submarine exploring procedurally generated underwater caves. It uses the new Input System (`Assets/_Project/Input/InputSystem_Actions.inputactions`). The main scene is `Assets/_Project/Scenes/Main/MainScene.unity`; the other scenes in `Scenes/TestBeds/` are test beds (IK crawlers, snakes, tubes).
+
+All project assets live under `Assets/_Project/` (`Scripts/`, `Shaders/` incl. `Compute/`, `Art/`, `Prefabs/`, `Data/` for ScriptableObject instances, `Scenes/`, `Input/`). Unused prototypes are parked in `Assets/_Legacy/`. `Assets/Settings/` holds the URP assets.
 
 ## Building / running
 
 There is no CLI build, lint, or test setup. Compiling, running, and profiling all happen in the Unity Editor, and the repo has no test assemblies, even though `com.unity.test-framework` is installed. `dotnet` isn't installed in the WSL environment, so you can't verify compilation from the shell. Keep edits syntactically careful and ask the user to check the Unity console.
 
-- `.aiignore` / `.cursorignore` exclude `*.meta`, `*.prefab`, and `*.asset`. Don't hand-edit serialized Unity files. Scene/prefab wiring (e.g. assigning a new `[SerializeField]` on `Bootstrap`) has to be done by the user in the Editor, so tell them when it's needed.
+- `.aiignore` / `.cursorignore` exclude `*.meta`, `*.prefab`, and `*.asset`. Don't hand-edit serialized Unity files. Scene/prefab wiring (e.g. assigning a new `[SerializeField]` on a host component) has to be done by the user in the Editor, so tell them when it's needed.
 - New C# scripts need a matching `.meta`, which Unity generates on import. Don't write one by hand.
 - `Assets/Plugins/vFolders`, `vHierarchy`, `vInspector` are third-party editor tools. Leave them alone.
 
 ## Architecture
 
-### Composition root: `Assets/Scripts/Core/Bootstrap.cs`
-Most systems are **plain C# classes, not MonoBehaviours**. `Bootstrap.Awake()` constructs them and injects dependencies, and `Bootstrap.Update()` drives them with explicit `Tick()` calls (`ChunkStreamer`, `SpawnManager`, `AutomationLogicSystem`, `FishSpawnSystem`, `SeaSnakeSpawnSystem`) and then syncs the SDF atlas lookup. MonoBehaviour-based systems (`ToolModeController`, `FishSpawnSystem`, `UIController`, movers, debug tools) get their dependencies through an `Init(...)` method called from Bootstrap, not through `FindObjectOfType`. A new system should follow the same pattern: construct or `Init` it in Bootstrap, tick it from `Bootstrap.Update`, and dispose it in `OnDestroy`.
+### Service resolver (no Bootstrap)
+There is no central Bootstrap. Systems are **MonoBehaviour hosts** placed in the scene. Each host builds its internals (often plain C# classes) in `Awake`, registers itself under narrow interfaces in `OnEnable` (`GameServices.EnsureInitialized().Register<IFoo>(this)`), and unregisters in `OnDisable`. Consumers resolve in `Start` (`Resolve<T>` when required, `TryResolve<T>` when optional, `ResolveWhenReady<T>` for late registrants). `Core/ObjectResolver.cs` + `GameServices.cs` are the whole mechanism. Avoid inspector references to other systems; register or resolve instead (local prefab wiring such as IK bones is fine).
 
-Tunable parameters live in ScriptableObjects under `Assets/Scripts/Settings/` (`[CreateAssetMenu(menuName = "Own/...")]`), with asset instances in `Assets/Settings/`. `MCSettings` (chunk dims, voxel scale, noise, biomes) and `ChunkStreamingSettings` (radius, readback budget, water level, atlas slots) are shared by almost everything.
+Hosts: `TerrainSystem` (`ISdfSampler`, `ITerrainData`, `ITerrainEditor`, `ITerrainDebug`), `AutomationSystem` (`IInventory`, `IAutomationSystem`), `PathfindingSystem` (`IPathfindingSystem`), `FishSpawnSystem` (`IFishSystem`), `SubController` (`IPlayer`), `FogLightManager` (`IFogLightRegistry`). `ChunkParentAnchor` and `ChunkLoaderTarget` are components that register the chunk parent transform and the streaming focus (exactly one each). Terrain shaders/material/settings come from the `TerrainResources` ScriptableObject. Execution order: anchors -200, `TerrainSystem` -100 (it resolves the anchors in `Awake`); everything else resolves in `Start`.
 
-### Terrain pipeline (`Assets/Scripts/ChunkHandling/`, `Assets/Scripts/Compute/`)
+A new system should be a host MonoBehaviour that registers an interface and ticks itself in `Update`; it is not constructed from any central file.
+
+Tunable parameters live in ScriptableObjects under `Assets/_Project/Scripts/Settings/` (`[CreateAssetMenu(menuName = "Own/...")]`), with asset instances in `Assets/_Project/Data/`. `MCSettings` (chunk dims, voxel scale, noise, biomes) and `ChunkStreamingSettings` (radius, readback budget, water level, atlas slots) are shared by almost everything.
+
+### Terrain pipeline (`Assets/_Project/Scripts/ChunkHandling/`, `Assets/_Project/Shaders/Compute/`)
 The terrain is GPU-generated in chunks with marching cubes:
 - `ChunkStreamer` decides which chunk coords to load/unload around the target and queues builds.
 - `ChunkBuilder` submits per-chunk GPU work: `MCBaker` (density → `MarchingCubes.compute` → `PackForReadback.compute`) for meshes, and `SDFGpu` (`DensityValues.compute` + `EDT.compute`) for a signed distance field. Results come back through **async GPU readbacks**, capped by `maxAsyncReadbacks`. When a chunk finishes it raises `OnChunkReady`, which `SpawnManager` subscribes to. Chunks above `waterLevel` skip the mesh path.
@@ -33,14 +39,14 @@ The terrain is GPU-generated in chunks with marching cubes:
 - `ChunkHandling/Spawning/`: `SpawnManager` places props on chunk surfaces once a chunk is ready. Instanced prop batches are built on the GPU (`PropInstanceBuild.compute`) and released when their chunk unloads.
 - `Fish/FishSpawnSystem.cs` is a fully GPU boid simulation (`FishBoids.compute`). Each frame it builds a spatial grid (count → prefix scan → scatter) and runs the boid update with SDF wall avoidance, then fills matrix/draw lists for indirect instanced rendering. It spawns fish from each chunk's `interiorSpawnPositions`.
 - `Enemies/SeaSnakeSpawnSystem` spawns sea snakes only while `AutomationLogicSystem.IsMiningActive`.
-- Procedural animation: `IK/` (CCD solver, spider walker), `AnalyticalLegIk*`, `TailController`/`ArmatureTailController`. `PathfindingGraphBuilder` + `Core/PathfindingGraphSystem` build a navigation graph that `GraphFollower` consumes.
+- Procedural animation: `IK/` (CCD solver, spider walker), `AnalyticalLegIk*`, `TailController`/`ArmatureTailController`. `PathfindingGraphBuilder` + `Pathfinding/PathfindingGraphSystem` build a navigation graph that `GraphFollower` consumes.
 
 ### Tools & automation
-- `Controllers/ToolModeController` switches between tool modes (Dismantle, Placement, Pipe, Terraform). Tools are only active while the free camera is on. Each mode is a plain handler class in `Tools/` with its own settings SO.
-- `AutomationLogic/`: `Machine` (MonoBehaviour with input/output pipe nodes) and `Pipe` map onto the logic graph's `AutomationNode`/`AutomationEdge` in `AutomationLogicSystem`. It listens to the static `Machine.Destroyed`/`Pipe.Destroyed` events. A miner connected by pipes to the submarine adds ore to `Inventory` over time, and that counts as "mining active". Machines with `RegisterOnStart` are registered by Bootstrap at startup, and placed ones are registered by the placement tool.
+- `Tools/ToolModeController` switches between tool modes (Dismantle, Placement, Pipe, Terraform). Tools are only active while the free camera is on. Each mode is a plain handler class in `Tools/` with its own settings SO.
+- `AutomationLogic/`: `Machine` (MonoBehaviour with input/output pipe nodes) and `Pipe` map onto the logic graph's `AutomationNode`/`AutomationEdge` in `AutomationLogicSystem`. `Machine`/`Pipe` notify `IAutomationSystem` from `OnDestroy`. A miner connected by pipes to the submarine adds ore to `Inventory` over time, and that counts as "mining active". Machines with `RegisterOnStart` register themselves in `Start`, and placed ones are registered by the placement tool.
 
 ### Rendering
-URP renderer features live in `Rendering/` (`VolumetricFogRenderFeature`, `BlurToTextureFeature`). `FogLightManager` pushes light data to shaders as globals. Shader Graphs are spread around `Assets/` (`Materials/`, `BoidInstancing/`, `BiomeSettings/`, `Shaders/`).
+URP renderer features live in `Rendering/` (`VolumetricFogRenderFeature`, `BlurToTextureFeature`). `FogLightManager` pushes light data to shaders as globals. Shader Graphs live in `Assets/_Project/Shaders/Graphs/`, shared HLSL in `Shaders/Includes/`.
 
 ### Debugging
 `Debug/RuntimeDebugController` toggles chunk building, spawning, and fish at runtime. `ChunkSDFVisualizer` and `SDFAtlasTest` check that CPU and GPU SDF sampling agree.

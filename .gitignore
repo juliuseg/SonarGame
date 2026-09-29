@@ -106,3 +106,6 @@ graphify-out/
 
 # Claude Code local (per-user) settings
 .claude/settings.local.json
+
+# macOS
+.DS_Store

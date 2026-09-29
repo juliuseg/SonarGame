@@ -1,0 +1,622 @@
+#pragma kernel BoidUpdate
+#pragma kernel FishBuilder
+#pragma kernel BuildMatrices
+#pragma kernel BuildDrawList
+#pragma kernel WriteDrawArgs
+#pragma kernel GridClear
+#pragma kernel GridCount
+#pragma kernel GridScanBuckets
+#pragma kernel GridScanBlockOffsets
+#pragma kernel GridAddBlockOffsets
+#pragma kernel GridInitScatter
+#pragma kernel GridScatter
+
+#include "Includes/SampleSdfAtlas.hlsl"
+
+#define BOID_STATE_UNLOADED 0
+#define BOID_STATE_LOADED   1
+#define BOID_STATE_CLAIMING 2
+
+static const float3 kParkedPosition = float3(0.0, 100.0, 0.0);
+
+RWStructuredBuffer<uint> _BoidState;
+RWStructuredBuffer<float4> _Positions;
+RWStructuredBuffer<float4> _Velocities;
+
+StructuredBuffer<float4> _SpawnPositions;
+StructuredBuffer<float4> _SpawnVelocities;
+RWStructuredBuffer<int> _SpawnRemaining;
+
+RWStructuredBuffer<float4x4> _InstanceMatrices;
+
+RWStructuredBuffer<uint> _DrawCounter;
+RWStructuredBuffer<uint> _DrawIndices;
+RWByteAddressBuffer _DrawArgs;
+uint _SubMeshCount;
+
+#include "Includes/FishSpatialGrid.hlsl"
+
+uint _Count;
+float _DeltaTime;
+int _UseSdfAtlas;
+
+float3 _PlayerPosition;
+float _DespawnRadius;
+
+float _NeighborRadius;
+float _SeparationRadius;
+float _WeightSeparation;
+float _WeightAlignment;
+float _WeightCohesion;
+float _MaxSpeed;
+float _MinSpeed;
+float _MaxSteerForce;
+
+float _SdfAvoidRadius;
+float _SdfAvoidWeight;
+float _SdfGradientDelta;
+float _SdfPenetrationForceMult;
+float _SdfWallBrakeRadius;
+float _SdfWallBrakeStrength;
+float _SdfThreatSuppress;
+
+StructuredBuffer<float4> _ThreatPositions;
+uint _ThreatCount;
+float _ThreatAvoidRadius;
+float _ThreatAvoidWeight;
+float _ThreatPanicRadius;
+float _SpeedAccel;
+float _PanicSpeedMult;
+float _PanicAccel;
+float _PanicBoostDuration;
+
+float _FishScale;
+float3 _MeshSwimUp;
+float4 _MeshOrientationQuat;
+
+float3 LimitVec(float3 v, float maxLen)
+{
+    float m = length(v);
+    if (m > maxLen)
+        return v * (maxLen / m);
+    return v;
+}
+
+bool IsOutOfDespawnRange(float3 pos)
+{
+    float3 dif = pos - _PlayerPosition;
+    dif.y *= 1.8;
+    return length(dif) > _DespawnRadius;
+}
+
+float3x3 RotationMatrixFromLook(float3 forward, float3 upHint)
+{
+    float3 f = normalize(forward);
+    float3 u = length(upHint) > 1e-6 ? normalize(upHint) : float3(0.0, 1.0, 0.0);
+
+    if (abs(dot(f, u)) > 0.98)
+    {
+        float3 fallback = abs(f.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+        u = normalize(cross(f, fallback));
+    }
+
+    float3 r = normalize(cross(u, f));
+    u = cross(f, r);
+
+    float3x3 m;
+    m[0] = float3(r.x, u.x, f.x);
+    m[1] = float3(r.y, u.y, f.y);
+    m[2] = float3(r.z, u.z, f.z);
+    return m;
+}
+
+float3x3 QuatToMatrix(float4 q)
+{
+    float x = q.x;
+    float y = q.y;
+    float z = q.z;
+    float w = q.w;
+
+    float x2 = x + x;
+    float y2 = y + y;
+    float z2 = z + z;
+    float xx = x * x2;
+    float yy = y * y2;
+    float zz = z * z2;
+    float xy = x * y2;
+    float xz = x * z2;
+    float yz = y * z2;
+    float wx = w * x2;
+    float wy = w * y2;
+    float wz = w * z2;
+
+    float3x3 m;
+    m[0] = float3(1.0 - (yy + zz), xy + wz, xz - wy);
+    m[1] = float3(xy - wz, 1.0 - (xx + zz), yz + wx);
+    m[2] = float3(xz + wy, yz - wx, 1.0 - (xx + yy));
+    return m;
+}
+
+float4x4 BuildFishMatrix(float3 pos, float3 vel)
+{
+    float3 forward = length(vel) > 1e-6 ? normalize(vel) : float3(0.0, 0.0, 1.0);
+
+    // Match CPU: Quaternion swimRot = LookRotation(vel, meshSwimUp); rotation = swimRot * meshFix;
+    float3x3 swimRot = RotationMatrixFromLook(forward, _MeshSwimUp);
+    float3x3 meshFix = QuatToMatrix(_MeshOrientationQuat);
+    float3x3 rotation = mul(swimRot, meshFix);
+
+    float3 col0 = float3(rotation[0][0], rotation[1][0], rotation[2][0]) * _FishScale;
+    float3 col1 = float3(rotation[0][1], rotation[1][1], rotation[2][1]) * _FishScale;
+    float3 col2 = float3(rotation[0][2], rotation[1][2], rotation[2][2]) * _FishScale;
+
+    return float4x4(
+        col0.x, col1.x, col2.x, pos.x,
+        col0.y, col1.y, col2.y, pos.y,
+        col0.z, col1.z, col2.z, pos.z,
+        0.0,    0.0,    0.0,    1.0
+    );
+}
+
+struct SdfWallInfo
+{
+    float sdf;
+    float3 gradDir;
+    float urgency;
+    int valid;
+};
+
+SdfWallInfo SampleSdfWall(float3 pos)
+{
+    SdfWallInfo w;
+    w.sdf = 0.0;
+    w.gradDir = float3(0, 0, 1);
+    w.urgency = 0.0;
+    w.valid = 0;
+
+    if (_UseSdfAtlas == 0)
+        return w;
+
+    w.sdf = SampleSdfAtlas(pos);
+    if (w.sdf >= _SdfAvoidRadius)
+        return w;
+
+    float3 grad = SampleSdfAtlasGradient(pos, _SdfGradientDelta);
+    float gradLen = length(grad);
+    if (gradLen < 1e-6)
+        return w;
+
+    w.gradDir = grad / gradLen;
+    w.valid = 1;
+
+    w.urgency = saturate((_SdfAvoidRadius - w.sdf) / max(_SdfAvoidRadius, 1e-4));
+    if (w.sdf <= 0.0)
+        w.urgency = 1.0;
+
+    return w;
+}
+
+float3 SdfWallSteerForce(SdfWallInfo w)
+{
+    if (w.valid == 0 || w.urgency <= 0.0)
+        return float3(0, 0, 0);
+
+    float strength = _SdfAvoidWeight * w.urgency;
+    if (w.sdf <= 0.0)
+        strength = _SdfAvoidWeight * _SdfPenetrationForceMult + abs(w.sdf) * _SdfAvoidWeight * 2.0;
+
+    return w.gradDir * strength;
+}
+
+void SdfWallBrakeVelocity(SdfWallInfo w, inout float3 vel)
+{
+    if (w.valid == 0 || w.sdf > _SdfWallBrakeRadius)
+        return;
+
+    float speed = length(vel);
+    if (speed < 1e-6)
+        return;
+
+    float3 velDir = vel / speed;
+    float intoWall = -dot(velDir, w.gradDir);
+    if (intoWall <= 0.0)
+        return;
+
+    float proximity = saturate((_SdfWallBrakeRadius - w.sdf) / max(_SdfWallBrakeRadius, 1e-4));
+    float brake = intoWall * proximity * max(w.urgency, proximity) * _SdfWallBrakeStrength;
+
+    vel -= w.gradDir * min(0.0, dot(vel, w.gradDir));
+    vel *= max(0.0, 1.0 - brake);
+
+    if (w.sdf <= 0.0)
+        vel *= 0.15;
+}
+
+float3 ThreatAvoidanceForce(float3 pos)
+{
+    if (_ThreatCount == 0)
+        return float3(0, 0, 0);
+
+    float3 force = float3(0, 0, 0);
+    for (uint t = 0; t < _ThreatCount; t++)
+    {
+        float3 threatPos = _ThreatPositions[t].xyz;
+        float3 away = pos - threatPos;
+        float distSq = dot(away, away);
+        if (distSq < 1e-8)
+            continue;
+
+        float dist = sqrt(distSq);
+        if (dist >= _ThreatAvoidRadius)
+            continue;
+
+        float3 dir = away / dist;
+        float falloff = saturate((_ThreatAvoidRadius - dist) / max(_ThreatAvoidRadius, 1e-4));
+        force += dir * (_ThreatAvoidWeight * falloff);
+    }
+
+    return force;
+}
+
+float ThreatPanicProximity(float3 pos)
+{
+    if (_ThreatCount == 0 || _ThreatPanicRadius <= 1e-4)
+        return 0.0;
+
+    float proximity = 0.0;
+    for (uint t = 0; t < _ThreatCount; t++)
+    {
+        float3 threatPos = _ThreatPositions[t].xyz;
+        float distSq = dot(pos - threatPos, pos - threatPos);
+        if (distSq >= _ThreatPanicRadius * _ThreatPanicRadius)
+            continue;
+
+        float dist = sqrt(distSq);
+        proximity = max(proximity, 1.0 - dist / _ThreatPanicRadius);
+    }
+
+    return proximity;
+}
+
+void ApplySpeedLimits(
+    float3 velBefore,
+    float panicTimerIn,
+    float panicProximity,
+    inout float3 vel,
+    out float panicTimerOut)
+{
+    float panicTimer = panicTimerIn;
+
+    if (panicProximity > 0.0)
+        panicTimer = _PanicBoostDuration;
+    else
+        panicTimer = max(0.0, panicTimer - _DeltaTime);
+
+    float boostT = _PanicBoostDuration > 1e-4
+        ? saturate(panicTimer / _PanicBoostDuration)
+        : 0.0;
+    float panicBlend = max(panicProximity, boostT);
+    float targetMax = lerp(_MaxSpeed, _MaxSpeed * _PanicSpeedMult, panicBlend);
+    float accelLimit = lerp(_SpeedAccel, _PanicAccel, panicBlend);
+
+    float speed = length(vel);
+    float3 dir = speed > 1e-6 ? vel / speed
+        : length(velBefore) > 1e-6 ? normalize(velBefore)
+        : float3(0, 0, 1);
+
+    float newSpeed = speed;
+    if (speed < targetMax)
+        newSpeed = min(speed + accelLimit * _DeltaTime, targetMax);
+    else if (speed > targetMax)
+        newSpeed = max(speed - accelLimit * _DeltaTime, targetMax);
+
+    newSpeed = clamp(newSpeed, _MinSpeed, targetMax);
+    vel = dir * newSpeed;
+    panicTimerOut = panicTimer;
+}
+
+[numthreads(64, 1, 1)]
+void FishBuilder(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    if (_BoidState[i] != BOID_STATE_UNLOADED)
+        return;
+
+    uint previousState;
+    InterlockedCompareExchange(_BoidState[i], BOID_STATE_CLAIMING, BOID_STATE_UNLOADED, previousState);
+    if (previousState != BOID_STATE_UNLOADED)
+        return;
+
+    int oldRemaining;
+    InterlockedAdd(_SpawnRemaining[0], -1, oldRemaining);
+    int spawnIdx = oldRemaining - 1;
+
+    if (spawnIdx < 0)
+    {
+        _BoidState[i] = BOID_STATE_UNLOADED;
+        return;
+    }
+
+    _Positions[i] = _SpawnPositions[spawnIdx];
+    _Velocities[i] = _SpawnVelocities[spawnIdx];
+    _BoidState[i] = BOID_STATE_LOADED;
+}
+
+[numthreads(64, 1, 1)]
+void BuildMatrices(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    if (_BoidState[i] != BOID_STATE_LOADED)
+        return;
+
+    float3 pos = _Positions[i].xyz;
+    float3 vel = _Velocities[i].xyz;
+    _InstanceMatrices[i] = BuildFishMatrix(pos, vel);
+}
+
+[numthreads(64, 1, 1)]
+void BuildDrawList(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    if (_BoidState[i] != BOID_STATE_LOADED)
+        return;
+
+    uint drawIdx;
+    InterlockedAdd(_DrawCounter[0], 1, drawIdx);
+    _DrawIndices[drawIdx] = i;
+}
+
+// Copies the GPU-side draw count into the indirect args (instanceCount is the 2nd uint of each 5-uint entry),
+// so the CPU never has to read the count back.
+[numthreads(8, 1, 1)]
+void WriteDrawArgs(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _SubMeshCount)
+        return;
+
+    _DrawArgs.Store((id.x * 5 + 1) * 4, _DrawCounter[0]);
+}
+
+[numthreads(64, 1, 1)]
+void BoidUpdate(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count)
+        return;
+
+    uint state = _BoidState[i];
+    if (state == BOID_STATE_UNLOADED)
+    {
+        _Positions[i] = float4(kParkedPosition, 0.0);
+        _Velocities[i] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
+
+    float3 pos = _Positions[i].xyz;
+    float3 vel = _Velocities[i].xyz;
+    float3 velBefore = vel;
+    float panicTimer = _Velocities[i].w;
+
+    if (IsOutOfDespawnRange(pos))
+    {
+        _BoidState[i] = BOID_STATE_UNLOADED;
+        _Positions[i] = float4(kParkedPosition, 0.0);
+        _Velocities[i] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
+
+    float3 sep = float3(0, 0, 0);
+    float3 alignSum = float3(0, 0, 0);
+    float3 cohSum = float3(0, 0, 0);
+    uint neighborCount = 0;
+
+    float neighborRadiusSq = _NeighborRadius * _NeighborRadius;
+    AccumulateBoidNeighbors(i, pos, neighborRadiusSq, _SeparationRadius, sep, alignSum, cohSum, neighborCount);
+
+    float3 steer = float3(0, 0, 0);
+
+    if (neighborCount > 0)
+    {
+        float inv = 1.0 / (float)neighborCount;
+
+        float3 cent = cohSum * inv;
+        float3 toCenter = cent - pos;
+        float cohDist = length(toCenter);
+        float3 cohSteer = float3(0, 0, 0);
+        if (cohDist > 1e-6)
+        {
+            float3 cohDesired = (toCenter / cohDist) * _MaxSpeed;
+            cohSteer = cohDesired - vel;
+        }
+
+        float3 avgVel = alignSum * inv;
+        float avgSpeed = length(avgVel);
+        float3 alignSteer = float3(0, 0, 0);
+        if (avgSpeed > 1e-6)
+        {
+            float3 alignDesired = (avgVel / avgSpeed) * _MaxSpeed;
+            alignSteer = alignDesired - vel;
+        }
+
+        steer += LimitVec(sep, _MaxSteerForce) * _WeightSeparation;
+        steer += LimitVec(alignSteer, _MaxSteerForce) * _WeightAlignment;
+        steer += LimitVec(cohSteer, _MaxSteerForce) * _WeightCohesion;
+    }
+
+    SdfWallInfo wall = SampleSdfWall(pos);
+    float threatScale = wall.valid != 0
+        ? (1.0 - wall.urgency * _SdfThreatSuppress)
+        : 1.0;
+
+    steer += LimitVec(ThreatAvoidanceForce(pos) * threatScale, _MaxSteerForce);
+    steer = LimitVec(steer, _MaxSteerForce);
+    steer += LimitVec(SdfWallSteerForce(wall), _MaxSteerForce * 2.0);
+
+    vel += steer * _DeltaTime;
+    SdfWallBrakeVelocity(wall, vel);
+
+    float panicProximity = ThreatPanicProximity(pos) * threatScale;
+    ApplySpeedLimits(velBefore, panicTimer, panicProximity, vel, panicTimer);
+
+    pos += vel * _DeltaTime;
+
+    _Positions[i] = float4(pos, 1.0);
+    _Velocities[i] = float4(vel, panicTimer);
+}
+
+groupshared uint gs_GridScan[FISH_GRID_SCAN_GROUP_SIZE];
+
+uint _GridScanGroupCount;
+
+[numthreads(64, 1, 1)]
+void GridClear(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _GridCellCount)
+        return;
+
+    _GridCellCounts[i] = 0;
+}
+
+[numthreads(64, 1, 1)]
+void GridCount(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count || _BoidState[i] != BOID_STATE_LOADED)
+        return;
+
+    uint cell = FishFlatCell(FishWorldToCell(_Positions[i].xyz));
+    if (cell == FISH_GRID_INVALID)
+        return;
+
+    InterlockedAdd(_GridCellCounts[cell], 1);
+}
+
+[numthreads(FISH_GRID_SCAN_GROUP_SIZE, 1, 1)]
+void GridScanBuckets(uint3 groupId : SV_GroupID, uint3 localId : SV_GroupThreadID)
+{
+    uint tid = localId.x;
+    uint offset = groupId.x * FISH_GRID_SCAN_GROUP_SIZE + tid;
+
+    gs_GridScan[tid] = (offset < _GridCellCount) ? _GridCellCounts[offset] : 0;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint scanStride = 1; scanStride < FISH_GRID_SCAN_GROUP_SIZE; scanStride <<= 1)
+    {
+        uint index = (tid + 1) * scanStride * 2 - 1;
+        if (index < FISH_GRID_SCAN_GROUP_SIZE)
+            gs_GridScan[index] += gs_GridScan[index - scanStride];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (tid == 0)
+    {
+        _GridScanBlockSums[groupId.x] = gs_GridScan[FISH_GRID_SCAN_GROUP_SIZE - 1];
+        gs_GridScan[FISH_GRID_SCAN_GROUP_SIZE - 1] = 0;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint downStride = FISH_GRID_SCAN_GROUP_SIZE >> 1; downStride > 0; downStride >>= 1)
+    {
+        uint index = (tid + 1) * downStride * 2 - 1;
+        if (index < FISH_GRID_SCAN_GROUP_SIZE)
+        {
+            uint temp = gs_GridScan[index - downStride];
+            gs_GridScan[index - downStride] = gs_GridScan[index];
+            gs_GridScan[index] += temp;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (offset < _GridCellCount)
+        _GridCellOffsets[offset] = gs_GridScan[tid];
+}
+
+[numthreads(FISH_GRID_SCAN_GROUP_SIZE, 1, 1)]
+void GridScanBlockOffsets(uint3 localId : SV_GroupThreadID)
+{
+    uint tid = localId.x;
+    uint value = (tid < _GridScanGroupCount) ? _GridScanBlockSums[tid] : 0;
+    gs_GridScan[tid] = value;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint scanStride = 1; scanStride < FISH_GRID_SCAN_GROUP_SIZE; scanStride <<= 1)
+    {
+        uint index = (tid + 1) * scanStride * 2 - 1;
+        if (index < FISH_GRID_SCAN_GROUP_SIZE)
+            gs_GridScan[index] += gs_GridScan[index - scanStride];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (tid == 0)
+        gs_GridScan[FISH_GRID_SCAN_GROUP_SIZE - 1] = 0;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint downStride = FISH_GRID_SCAN_GROUP_SIZE >> 1; downStride > 0; downStride >>= 1)
+    {
+        uint index = (tid + 1) * downStride * 2 - 1;
+        if (index < FISH_GRID_SCAN_GROUP_SIZE)
+        {
+            uint temp = gs_GridScan[index - downStride];
+            gs_GridScan[index - downStride] = gs_GridScan[index];
+            gs_GridScan[index] += temp;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (tid < _GridScanGroupCount)
+        _GridScanBlockSums[tid] = gs_GridScan[tid];
+}
+
+[numthreads(FISH_GRID_SCAN_GROUP_SIZE, 1, 1)]
+void GridAddBlockOffsets(uint3 groupId : SV_GroupID, uint3 localId : SV_GroupThreadID)
+{
+    if (groupId.x == 0)
+        return;
+
+    uint tid = localId.x;
+    uint offset = groupId.x * FISH_GRID_SCAN_GROUP_SIZE + tid;
+    if (offset >= _GridCellCount)
+        return;
+
+    _GridCellOffsets[offset] += _GridScanBlockSums[groupId.x - 1];
+}
+
+[numthreads(64, 1, 1)]
+void GridInitScatter(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _GridCellCount)
+        return;
+
+    _GridCellScatter[i] = _GridCellOffsets[i];
+}
+
+[numthreads(64, 1, 1)]
+void GridScatter(uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= _Count || _BoidState[i] != BOID_STATE_LOADED)
+        return;
+
+    uint cell = FishFlatCell(FishWorldToCell(_Positions[i].xyz));
+    if (cell == FISH_GRID_INVALID)
+        return;
+
+    uint slot;
+    InterlockedAdd(_GridCellScatter[cell], 1, slot);
+    _GridCellFish[slot] = i;
+}
