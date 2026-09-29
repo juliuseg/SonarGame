@@ -12,7 +12,7 @@ public class SpawnManager
     readonly ChunkManager _chunkManager;
     readonly MCSettings _mcSettings;
     readonly ChunkStreamingSettings _chunkStreamingSettings;
-    readonly Transform _target;
+    readonly IStreamingFocus _focus;
     readonly PropInstanceBaker _baker;
     readonly MaterialPropertyBlock _propertyBlock = new();
     readonly Dictionary<Vector3Int, List<GameObject>> _spawnedObjects = new();
@@ -25,13 +25,13 @@ public class SpawnManager
         ChunkManager chunkManager,
         MCSettings mcSettings,
         ChunkStreamingSettings chunkStreamingSettings,
-        Transform target,
+        IStreamingFocus focus,
         ComputeShader propBuildShader)
     {
         _chunkManager = chunkManager;
         _mcSettings = mcSettings;
         _chunkStreamingSettings = chunkStreamingSettings;
-        _target = target;
+        _focus = focus;
         _baker = new PropInstanceBaker(propBuildShader, mcSettings, chunkManager);
 
         var rootObject = new GameObject("PersistedSpawnNodes");
@@ -89,7 +89,7 @@ public class SpawnManager
         Profiler.BeginSample("SpawnManager.Tick");
         try
         {
-            float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
+            float radius = ChunkMath.GetDynamicRadius(_focus.Position, _chunkStreamingSettings);
             DrawVisibleChunks(radius * 0.75f);
         }
         finally
@@ -324,7 +324,7 @@ public class SpawnManager
             foreach (var kvp in _chunkManager.chunks)
             {
                 Vector3 worldCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
-                if (ChunkMath.IsOutOfRange(_target.position, worldCenter, radius))
+                if (ChunkMath.IsOutOfRange(_focus.Position, worldCenter, radius))
                     continue;
 
                 var batches = kvp.Value.propBatches;

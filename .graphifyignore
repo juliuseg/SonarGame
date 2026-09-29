@@ -1,0 +1,16 @@
+Library/
+Temp/
+Logs/
+UserSettings/
+Packages/
+Assets/Plugins/
+*.meta
+*.prefab
+*.asset
+*.unity
+*.mat
+*.png
+*.jpg
+*.fbx
+*.anim
+*.controller

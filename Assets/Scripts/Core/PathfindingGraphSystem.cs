@@ -1,7 +1,7 @@
 using System.Collections;
 using UnityEngine;
 
-public class PathfindingGraphSystem
+public class PathfindingGraphSystem : IPathfindingSystem
 {
     readonly PathfindingGraphBuilder _builder;
     readonly MonoBehaviour _coroutineRunner;

@@ -1,0 +1,56 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+SonarGame is a Unity 6 (`6000.4.8f1`) URP game about a submarine exploring procedurally generated underwater caves. It uses the new Input System (`Assets/InputSystem/InputSystem_Actions.inputactions`). The main scene is `Assets/Scenes/MainScene.unity`; the other scenes are test beds (IK crawlers, snakes, fish, tubes).
+
+## Building / running
+
+There is no CLI build, lint, or test setup. Compiling, running, and profiling all happen in the Unity Editor, and the repo has no test assemblies, even though `com.unity.test-framework` is installed. `dotnet` isn't installed in the WSL environment, so you can't verify compilation from the shell. Keep edits syntactically careful and ask the user to check the Unity console.
+
+- `.aiignore` / `.cursorignore` exclude `*.meta`, `*.prefab`, and `*.asset`. Don't hand-edit serialized Unity files. Scene/prefab wiring (e.g. assigning a new `[SerializeField]` on `Bootstrap`) has to be done by the user in the Editor, so tell them when it's needed.
+- New C# scripts need a matching `.meta`, which Unity generates on import. Don't write one by hand.
+- `Assets/Plugins/vFolders`, `vHierarchy`, `vInspector` are third-party editor tools. Leave them alone.
+
+## Architecture
+
+### Composition root: `Assets/Scripts/Core/Bootstrap.cs`
+Most systems are **plain C# classes, not MonoBehaviours**. `Bootstrap.Awake()` constructs them and injects dependencies, and `Bootstrap.Update()` drives them with explicit `Tick()` calls (`ChunkStreamer`, `SpawnManager`, `AutomationLogicSystem`, `FishSpawnSystem`, `SeaSnakeSpawnSystem`) and then syncs the SDF atlas lookup. MonoBehaviour-based systems (`ToolModeController`, `FishSpawnSystem`, `UIController`, movers, debug tools) get their dependencies through an `Init(...)` method called from Bootstrap, not through `FindObjectOfType`. A new system should follow the same pattern: construct or `Init` it in Bootstrap, tick it from `Bootstrap.Update`, and dispose it in `OnDestroy`.
+
+Tunable parameters live in ScriptableObjects under `Assets/Scripts/Settings/` (`[CreateAssetMenu(menuName = "Own/...")]`), with asset instances in `Assets/Settings/`. `MCSettings` (chunk dims, voxel scale, noise, biomes) and `ChunkStreamingSettings` (radius, readback budget, water level, atlas slots) are shared by almost everything.
+
+### Terrain pipeline (`Assets/Scripts/ChunkHandling/`, `Assets/Scripts/Compute/`)
+The terrain is GPU-generated in chunks with marching cubes:
+- `ChunkStreamer` decides which chunk coords to load/unload around the target and queues builds.
+- `ChunkBuilder` submits per-chunk GPU work: `MCBaker` (density → `MarchingCubes.compute` → `PackForReadback.compute`) for meshes, and `SDFGpu` (`DensityValues.compute` + `EDT.compute`) for a signed distance field. Results come back through **async GPU readbacks**, capped by `maxAsyncReadbacks`. When a chunk finishes it raises `OnChunkReady`, which `SpawnManager` subscribes to. Chunks above `waterLevel` skip the mesh path.
+- `ChunkManager` owns `Dictionary<Vector3Int, Chunk>`, handles world↔chunk coordinate math, and does CPU SDF sampling (`TryGetSDFValue`, trilinear across chunk borders). Terraform edits are stored per chunk. When a chunk unloads they move to `_offloadedEdits` and get reapplied when it reloads.
+- `SDFAtlas` packs every loaded chunk's SDF into one GPU `ComputeBuffer` (slot per chunk) plus a dense chunk→slot lookup centered on the player. GPU consumers (fish boids, prop placement) sample it via `Compute/Includes/SampleSdfAtlas.hlsl`. **The voxel indexing (`z + y*sz + x*sz*sy`) and border-wrapping logic are duplicated** between `SampleSdfAtlas.hlsl` and `ChunkManager.TryGetSDFValue`, and must be kept in sync.
+- Shared HLSL lives in `Compute/Includes/` (noise, Worley biomes, march tables, density sampling, structs).
+
+### Spawning & creatures
+- `ChunkHandling/Spawning/`: `SpawnManager` places props on chunk surfaces once a chunk is ready. Instanced prop batches are built on the GPU (`PropInstanceBuild.compute`) and released when their chunk unloads.
+- `Fish/FishSpawnSystem.cs` is a fully GPU boid simulation (`FishBoids.compute`). Each frame it builds a spatial grid (count → prefix scan → scatter) and runs the boid update with SDF wall avoidance, then fills matrix/draw lists for indirect instanced rendering. It spawns fish from each chunk's `interiorSpawnPositions`.
+- `Enemies/SeaSnakeSpawnSystem` spawns sea snakes only while `AutomationLogicSystem.IsMiningActive`.
+- Procedural animation: `IK/` (CCD solver, spider walker), `AnalyticalLegIk*`, `TailController`/`ArmatureTailController`. `PathfindingGraphBuilder` + `Core/PathfindingGraphSystem` build a navigation graph that `GraphFollower` consumes.
+
+### Tools & automation
+- `Controllers/ToolModeController` switches between tool modes (Dismantle, Placement, Pipe, Terraform). Tools are only active while the free camera is on. Each mode is a plain handler class in `Tools/` with its own settings SO.
+- `AutomationLogic/`: `Machine` (MonoBehaviour with input/output pipe nodes) and `Pipe` map onto the logic graph's `AutomationNode`/`AutomationEdge` in `AutomationLogicSystem`. It listens to the static `Machine.Destroyed`/`Pipe.Destroyed` events. A miner connected by pipes to the submarine adds ore to `Inventory` over time, and that counts as "mining active". Machines with `RegisterOnStart` are registered by Bootstrap at startup, and placed ones are registered by the placement tool.
+
+### Rendering
+URP renderer features live in `Rendering/` (`VolumetricFogRenderFeature`, `BlurToTextureFeature`). `FogLightManager` pushes light data to shaders as globals. Shader Graphs are spread around `Assets/` (`Materials/`, `BoidInstancing/`, `BiomeSettings/`, `Shaders/`).
+
+### Debugging
+`Debug/RuntimeDebugController` toggles chunk building, spawning, and fish at runtime. `ChunkSDFVisualizer` and `SDFAtlasTest` check that CPU and GPU SDF sampling agree.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

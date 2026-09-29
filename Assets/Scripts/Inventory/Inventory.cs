@@ -1,4 +1,4 @@
-public class Inventory
+public class Inventory : IInventory
 {
     public float Ore { get; private set; }
 

@@ -3,8 +3,6 @@ using UnityEngine;
 
 public class Pipe : MonoBehaviour
 {
-    public static event Action<Pipe> Destroyed;
-
     public PipeNodeController InputNode;
     public PipeNodeController OutputNode;
 
@@ -15,6 +13,8 @@ public class Pipe : MonoBehaviour
         if (OutputNode != null)
             OutputNode.occupied = false;
 
-        Destroyed?.Invoke(this);
+        var resolver = GameServices.Resolver;
+        if (resolver != null && resolver.TryResolve<IAutomationSystem>(out var automation))
+            automation.NotifyPipeDestroyed(this);
     }
 }

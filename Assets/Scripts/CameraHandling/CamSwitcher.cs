@@ -38,14 +38,14 @@ public class CamSwitcher : MonoBehaviour
 
     void Update()
     {
-        if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub)
+        if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.Target.position) < distToEnterSub)
             enterSubText.SetActive(true);
         else
             enterSubText.SetActive(false);
 
         if (Keyboard.current.tabKey.wasPressedThisFrame)
         {
-            if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.target.position) < distToEnterSub)
+            if (freeCameraController.enabled && Vector3.Distance(transform.position, camFollow.Target.position) < distToEnterSub)
             {
                 camFollow.enabled = true;
                 freeCameraController.enabled = false;
@@ -60,9 +60,9 @@ public class CamSwitcher : MonoBehaviour
 
                 lastCamFollowPosition = transform.position;
                 lastCamFollowRotation = transform.rotation;
-                float yaw = camFollow.target.eulerAngles.y;
+                float yaw = camFollow.Target.eulerAngles.y;
                 Vector3 rotatedOffset = Quaternion.Euler(0, yaw, 0) * exitOffset;
-                transform.position = camFollow.target.position + rotatedOffset;
+                transform.position = camFollow.Target.position + rotatedOffset;
                 freeCameraController.resetRots();
             }
         }

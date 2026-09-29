@@ -20,16 +20,17 @@ public class SDFAtlasTest : MonoBehaviour
     private int _kernel;
     private bool _readbackPending;
 
-    public void Init(
-        ChunkManager chunkManager,
-        SDFAtlas atlas,
-        MCSettings mcSettings,
-        ChunkStreamingSettings streamingSettings)
+    void Start()
     {
-        _chunkManager = chunkManager;
-        _atlas = atlas;
-        _mcSettings = mcSettings;
-        _streamingSettings = streamingSettings;
+        var resolver = GameServices.EnsureInitialized();
+        if (samplePoint == null && resolver.TryResolve<IPlayer>(out var player))
+            samplePoint = player.Transform;
+
+        var terrain = resolver.Resolve<ITerrainData>();
+        _chunkManager = terrain.ChunkManager;
+        _atlas = terrain.SDFAtlas;
+        _mcSettings = terrain.MCSettings;
+        _streamingSettings = terrain.StreamingSettings;
 
         _kernel = testShader.FindKernel("SampleSDF");
         _resultBuffer = new ComputeBuffer(1, sizeof(float));

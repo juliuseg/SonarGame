@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class CamFollow : MonoBehaviour
 {
-    public Transform target;
+    public Transform Target { get; private set; }
     public Vector3 followOffset = new Vector3(0, 2, -6);
     public float lookAheadDst = 10f;
     public float rotSmoothSpeed = 6f;
@@ -17,7 +17,15 @@ public class CamFollow : MonoBehaviour
 
     void Start()
     {
-        _rb = target.GetComponent<Rigidbody>();
+        if (!GameServices.EnsureInitialized().TryResolve<IPlayer>(out var player))
+        {
+            Debug.LogError("CamFollow: no IPlayer registered.", this);
+            enabled = false;
+            return;
+        }
+
+        Target = player.Transform;
+        _rb = player.Rigidbody;
         _prevPos = _currPos = _rb.position;
         _prevRot = _currRot = _rb.rotation;
         _smoothedOffsetRot = _rb.rotation;

@@ -6,12 +6,12 @@ public class PlacementToolHandler
     readonly PlacementToolSettings _settings;
     readonly Camera _camera;
     readonly ChunkManager _chunkManager;
-    readonly AutomationLogicSystem _automationLogic;
+    readonly IAutomationSystem _automationLogic;
 
     GameObject _pointer;
     CrystalController _snappedCrystal;
 
-    public PlacementToolHandler(PlacementToolSettings settings, Camera camera, ChunkManager chunkManager, AutomationLogicSystem automationLogic)
+    public PlacementToolHandler(PlacementToolSettings settings, Camera camera, ChunkManager chunkManager, IAutomationSystem automationLogic)
     {
         _settings = settings;
         _camera = camera;

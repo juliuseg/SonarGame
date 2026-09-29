@@ -4,8 +4,6 @@ using UnityEngine;
 
 public class Machine : MonoBehaviour
 {
-    public static event Action<Machine> Destroyed;
-
     [SerializeField] MachineType machineType;
     [SerializeField] List<PipeNodeController> inputNodes = new();
     [SerializeField] List<PipeNodeController> outputNodes = new();
@@ -59,9 +57,17 @@ public class Machine : MonoBehaviour
         return -1;
     }
 
+    void Start()
+    {
+        if (registerOnStart)
+            StartCoroutine(GameServices.EnsureInitialized().ResolveWhenReady<IAutomationSystem>(automation => automation.CreateNode(this)));
+    }
+
     void OnDestroy()
     {
         GetComponentInParent<CrystalController>()?.ClearMiner();
-        Destroyed?.Invoke(this);
+        var resolver = GameServices.Resolver;
+        if (resolver != null && resolver.TryResolve<IAutomationSystem>(out var automation))
+            automation.NotifyMachineDestroyed(this);
     }
 }

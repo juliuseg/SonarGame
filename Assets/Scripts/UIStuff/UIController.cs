@@ -5,11 +5,11 @@ public class UIController : MonoBehaviour
 {
     [SerializeField] TextMeshProUGUI oreText;
 
-    Inventory _inventory;
+    IInventory _inventory;
 
-    public void Init(Inventory inventory)
+    void Start()
     {
-        _inventory = inventory;
+        _inventory = GameServices.EnsureInitialized().Resolve<IInventory>();
     }
 
     void Update()

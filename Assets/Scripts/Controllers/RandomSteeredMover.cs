@@ -64,7 +64,7 @@ public class RandomSteeredMover : MonoBehaviour
     [Tooltip("After losing line-of-sight, mouth stays open and can resume firing for this long.")]
     public float attackGraceDuration = 0.4f;
 
-    private ChunkManager _chunkManager;
+    private ISdfSampler _chunkManager;
     private EnemySnakeState _state;
 
     [Header("Initial State")]
@@ -100,13 +100,20 @@ public class RandomSteeredMover : MonoBehaviour
 
     void Start()
     {
+        _chunkManager ??= ResolveSampler();
         if (!_ready)
             SetupState(target, warnNoSdf: true);
     }
 
-    public void Init(ChunkManager chunkManager, Transform initialHeadingTarget = null)
+    static ISdfSampler ResolveSampler()
     {
-        _chunkManager = chunkManager;
+        GameServices.EnsureInitialized().TryResolve<ISdfSampler>(out var sampler);
+        return sampler;
+    }
+
+    public void Init(Transform initialHeadingTarget = null)
+    {
+        _chunkManager = ResolveSampler();
         Transform headingTarget = initialHeadingTarget != null ? initialHeadingTarget : target;
         SetupState(headingTarget, warnNoSdf: false);
     }
@@ -134,7 +141,7 @@ public class RandomSteeredMover : MonoBehaviour
 
         if (warnNoSdf && !UseSdfAvoidance && !_warnedNoSdf)
         {
-            Debug.LogWarning($"[{name}] RandomSteeredMover running without Init(ChunkManager) — SDF wall avoidance disabled.");
+            Debug.LogWarning($"[{name}] RandomSteeredMover running without an ISdfSampler — SDF wall avoidance disabled.");
             _warnedNoSdf = true;
         }
     }

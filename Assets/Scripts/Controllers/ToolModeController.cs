@@ -16,8 +16,6 @@ public class ToolModeController : MonoBehaviour
     [SerializeField] private PlacementToolSettings placementSettings;
     [SerializeField] private PipeToolSettings pipeSettings;
     [SerializeField] private TerraformToolSettings terraformSettings;
-    [SerializeField] private Transform pipeParent;
-    [SerializeField] private Camera targetCamera;
 
     DismantleToolHandler _dismantleHandler;
     PlacementToolHandler _placementHandler;
@@ -27,15 +25,20 @@ public class ToolModeController : MonoBehaviour
     ToolMode _mode = ToolMode.None;
     bool _freeCameraActive;
 
-    public void Init(ChunkStreamer chunkStreamer, AutomationLogicSystem automationLogic)
+    void Start()
     {
-        if (targetCamera == null)
-            targetCamera = Camera.main;
+        var resolver = GameServices.EnsureInitialized();
+        var automation = resolver.Resolve<IAutomationSystem>();
+        var terrainData = resolver.Resolve<ITerrainData>();
+        var terrainEditor = resolver.Resolve<ITerrainEditor>();
 
-        _dismantleHandler = new DismantleToolHandler(dismantleSettings, targetCamera, automationLogic);
-        _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, chunkStreamer.ChunkManager, automationLogic);
-        _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent, automationLogic);
-        _terraformHandler = new TerraformToolHandler(chunkStreamer, terraformSettings, targetCamera);
+        Camera targetCamera = Camera.main;
+        Transform pipeParent = new GameObject("Pipes").transform;
+
+        _dismantleHandler = new DismantleToolHandler(dismantleSettings, targetCamera, automation);
+        _placementHandler = new PlacementToolHandler(placementSettings, targetCamera, terrainData.ChunkManager, automation);
+        _pipeHandler = new PipeToolHandler(pipeSettings, targetCamera, pipeParent, automation);
+        _terraformHandler = new TerraformToolHandler(terrainEditor, terraformSettings, targetCamera);
     }
 
     public void SetFreeCameraActive(bool active)

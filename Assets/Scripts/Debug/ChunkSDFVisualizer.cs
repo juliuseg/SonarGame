@@ -24,10 +24,17 @@ public class ChunkSDFVisualizer : MonoBehaviour
     [Tooltip("Skip voxels with |sdf| above this (keeps the shell easy to read).")]
     public float maxAbsDistance = 1f;
 
-    public void Init(ChunkManager chunkManager, MCSettings chunkSettings)
+    void Start()
     {
-        _chunkManager = chunkManager;
-        _mcSettings = chunkSettings;
+        var resolver = GameServices.EnsureInitialized();
+        if (sdfTarget == null && resolver.TryResolve<IPlayer>(out var player))
+            sdfTarget = player.Transform;
+
+        if (resolver.TryResolve<ITerrainData>(out var terrain))
+        {
+            _chunkManager = terrain.ChunkManager;
+            _mcSettings = terrain.MCSettings;
+        }
     }
 
     void OnDrawGizmos()

@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 /// matrices all run on GPU — no simulation readback. CPU builds school spawn lists
 /// when a chunk enters collect range; GPU builder fills unloaded slots.
 /// </summary>
-public class FishSpawnSystem : MonoBehaviour
+public class FishSpawnSystem : MonoBehaviour, IFishSystem
 {
     const int SelectionSeed = 12345;
     const int ArgsStride = 5;
@@ -107,7 +107,7 @@ public class FishSpawnSystem : MonoBehaviour
     private ChunkStreamingSettings _streamingSettings;
     private SDFAtlas _sdfAtlas;
     private MCSettings _mcSettings;
-    private Transform _target;
+    private IStreamingFocus _focus;
     private Vector3 _chunkSizeWorld;
 
     private Material[] _drawMaterials;
@@ -184,18 +184,17 @@ public class FishSpawnSystem : MonoBehaviour
         InitializeGpuResources();
     }
 
-    public void Init(
-        ChunkManager chunkManager,
-        ChunkStreamingSettings streamingSettings,
-        Transform target,
-        SDFAtlas sdfAtlas,
-        MCSettings mcSettings)
+    void Start()
     {
-        _chunkManager = chunkManager;
-        _streamingSettings = streamingSettings;
-        _sdfAtlas = sdfAtlas;
+        var resolver = GameServices.EnsureInitialized();
+        var terrain = resolver.Resolve<ITerrainData>();
+        var mcSettings = terrain.MCSettings;
+
+        _chunkManager = terrain.ChunkManager;
+        _streamingSettings = terrain.StreamingSettings;
+        _sdfAtlas = terrain.SDFAtlas;
         _mcSettings = mcSettings;
-        _target = target;
+        _focus = resolver.Resolve<IStreamingFocus>();
         _chunkSizeWorld = mcSettings != null
             ? Vector3.Scale(mcSettings.scale, mcSettings.chunkDims)
             : _chunkManager.GetChunkSize();
@@ -450,11 +449,11 @@ public class FishSpawnSystem : MonoBehaviour
         _argsBuffer.SetData(_args, 0, 0, subMeshCount * ArgsStride);
     }
 
-    public void Tick()
+    void Update()
     {
         if (!Enabled)
             return;
-        if (_chunkManager == null || _target == null)
+        if (_chunkManager == null || _focus == null)
             return;
 
         EnsureDrawMaterials();
@@ -475,7 +474,7 @@ public class FishSpawnSystem : MonoBehaviour
         float verticalHalf = radius / 1.8f;
         float padding = Mathf.Max(fishScale, boidNeighborRadius);
         return new Bounds(
-            _target.position,
+            _focus.Position,
             new Vector3(
                 (radius + padding) * 2f,
                 (verticalHalf + padding) * 2f,
@@ -483,7 +482,7 @@ public class FishSpawnSystem : MonoBehaviour
     }
 
     private float GetStreamRadius() =>
-        ChunkMath.GetDynamicRadius(_target.position, _streamingSettings);
+        ChunkMath.GetDynamicRadius(_focus.Position, _streamingSettings);
 
     private float GetCollectRadius() => GetStreamRadius() * collectParam;
 
@@ -493,7 +492,7 @@ public class FishSpawnSystem : MonoBehaviour
     {
         float collectRadius = GetCollectRadius();
         Vector3 chunkSize = _chunkManager.GetChunkSize();
-        Vector3Int center = _chunkManager.WorldToChunk(_target.position);
+        Vector3Int center = _chunkManager.WorldToChunk(_focus.Position);
         float minAxis = Mathf.Min(chunkSize.x, Mathf.Min(chunkSize.y, chunkSize.z));
         int maxRange = Mathf.CeilToInt(collectRadius / minAxis);
 
@@ -504,7 +503,7 @@ public class FishSpawnSystem : MonoBehaviour
         {
             var c = new Vector3Int(center.x + dx, center.y + dy, center.z + dz);
             Vector3 worldCenter = _chunkManager.ChunkCenterWorld(c);
-            if (!ChunkMath.IsOutOfRange(_target.position, worldCenter, collectRadius))
+            if (!ChunkMath.IsOutOfRange(_focus.Position, worldCenter, collectRadius))
                 count++;
         }
 
@@ -529,7 +528,7 @@ public class FishSpawnSystem : MonoBehaviour
         foreach (var kvp in _chunkManager.chunks)
         {
             Vector3 chunkCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
-            if (ChunkMath.IsOutOfRange(_target.position, chunkCenter, collectRadius))
+            if (ChunkMath.IsOutOfRange(_focus.Position, chunkCenter, collectRadius))
             {
                 _chunksInCollectRange.Remove(kvp.Key);
                 continue;
@@ -945,7 +944,7 @@ public class FishSpawnSystem : MonoBehaviour
         int cellCount = dim * dim * dim;
         int scanGroupCount = (cellCount + GridScanGroupSize - 1) / GridScanGroupSize;
         int neighborCellRadius = Mathf.CeilToInt(boidNeighborRadius / cellSize);
-        Vector3 origin = _target.position - Vector3.one * (halfCells * cellSize);
+        Vector3 origin = _focus.Position - Vector3.one * (halfCells * cellSize);
 
         return new GridLayout
         {
@@ -1057,9 +1056,9 @@ public class FishSpawnSystem : MonoBehaviour
         bool useAtlas = UseSdfAtlas && _sdfAtlas != null && _mcSettings != null;
         if (useAtlas)
         {
-            Vector3Int centerChunk = _chunkManager.WorldToChunk(_target.position);
+            Vector3Int centerChunk = _chunkManager.WorldToChunk(_focus.Position);
             int halfDim = ChunkMath.GetStreamHalfRangeChunks(
-                _target.position, _chunkSizeWorld, _streamingSettings);
+                _focus.Position, _chunkSizeWorld, _streamingSettings);
             _sdfAtlas.SyncChunkLookup(centerChunk, halfDim);
         }
 
@@ -1142,7 +1141,7 @@ public class FishSpawnSystem : MonoBehaviour
 
         fishCompute.SetInt("_Count", maxInstances);
         fishCompute.SetFloat("_DeltaTime", Time.deltaTime);
-        fishCompute.SetVector("_PlayerPosition", _target.position);
+        fishCompute.SetVector("_PlayerPosition", _focus.Position);
         fishCompute.SetFloat("_DespawnRadius", GetDespawnRadius());
         fishCompute.SetFloat("_NeighborRadius", boidNeighborRadius);
         fishCompute.SetFloat("_SeparationRadius", boidSeparationRadius);
@@ -1248,8 +1247,24 @@ public class FishSpawnSystem : MonoBehaviour
         // Debug.Log($"[FishSpawn] draw={count} pool={maxInstances}");
     }
 
+    private void OnEnable()
+    {
+        GameServices.EnsureInitialized().Register<IFishSystem>(this);
+    }
+
+    private void OnDisable()
+    {
+        GameServices.Resolver?.Unregister<IFishSystem>();
+    }
+
     private void OnDestroy()
     {
         ReleaseGpuResources();
+    }
+
+    int IFishSystem.MaxInstances
+    {
+        get => maxInstances;
+        set => maxInstances = value;
     }
 }

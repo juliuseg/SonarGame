@@ -5,7 +5,7 @@ using UnityEngine;
 public class ChunkStreamer
 {
     [Header("References")]
-    private Transform _target; // defaults to this.transform
+    private IStreamingFocus _focus;
     
     private ChunkStreamingSettings _chunkStreamingSettings;
 
@@ -19,12 +19,12 @@ public class ChunkStreamer
 
     public ChunkManager ChunkManager => _chunkManager;
 
-    public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkStreamingSettings chunkStreamingSettings, Transform target)
+    public ChunkStreamer(ChunkBuilder chunkBuilder, ChunkManager chunkManager, ChunkStreamingSettings chunkStreamingSettings, IStreamingFocus focus)
     {
         _chunkBuilder = chunkBuilder;
         _chunkManager = chunkManager;
         _chunkStreamingSettings = chunkStreamingSettings;
-        _target = target;
+        _focus = focus;
 
         _chunkBuilder.OnChunkReady += OnChunkReady;
     }
@@ -42,9 +42,9 @@ public class ChunkStreamer
     {
 
         Vector3 chunkSize = _chunkManager.GetChunkSize();
-        Vector3Int center = _chunkManager.WorldToChunk(_target.position);
+        Vector3Int center = _chunkManager.WorldToChunk(_focus.Position);
 
-        float radius = ChunkMath.GetDynamicRadius(_target.position, _chunkStreamingSettings);
+        float radius = ChunkMath.GetDynamicRadius(_focus.Position, _chunkStreamingSettings);
 
         // Always evaluate needed and far chunks
         EnqueueNeeded(center, chunkSize, radius);
@@ -78,7 +78,7 @@ public class ChunkStreamer
             var c = new Vector3Int(center.x + dx, center.y + dy, center.z + dz);
 
             Vector3 worldCenter = _chunkManager.ChunkCenterWorld(c);
-            bool outOfRange = ChunkMath.IsOutOfRange(_target.position, worldCenter, radius);
+            bool outOfRange = ChunkMath.IsOutOfRange(_focus.Position, worldCenter, radius);
 
             if (outOfRange) continue;
             if (_chunkManager.TryGetChunk(c, out _)) continue;
@@ -101,7 +101,7 @@ public class ChunkStreamer
             var coord = _buildQueue.Peek();
 
             Vector3 centerWorld = _chunkManager.ChunkCenterWorld(coord);
-            if (ChunkMath.IsOutOfRange(_target.position, centerWorld, radius))
+            if (ChunkMath.IsOutOfRange(_focus.Position, centerWorld, radius))
             {
                 _buildQueue.Dequeue();
                 _pending.Remove(coord);
@@ -148,7 +148,7 @@ public class ChunkStreamer
         foreach (var kvp in _chunkManager.chunks)
         {
             Vector3 worldCenter = _chunkManager.ChunkCenterWorld(kvp.Key);
-            if (ChunkMath.IsOutOfRange(_target.position, worldCenter, unloadRadius))
+            if (ChunkMath.IsOutOfRange(_focus.Position, worldCenter, unloadRadius))
                 _unloadScratch.Add(kvp.Key);
         }
 

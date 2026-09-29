@@ -7,19 +7,13 @@ public class SDFGradientMover : MonoBehaviour
     public float speed = 5f;        // movement speed along gradient
     public bool normalizeGradient = true;
 
-    private ChunkManager _chunkManager;
-    
-    public void Init(ChunkManager chunkManager)
-    {
-        _chunkManager = chunkManager;
-    }
+    private ISdfSampler _chunkManager;
 
     void Start()
     {
-
-        if (_chunkManager == null)
+        if (!GameServices.EnsureInitialized().TryResolve(out _chunkManager))
         {
-            Debug.LogError("ChunkManager not found. Should be given via Init()");
+            Debug.LogError("No ISdfSampler registered. Is a TerrainSystem in the scene?");
             enabled = false;
         }
     }

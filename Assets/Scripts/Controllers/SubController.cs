@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class SubController : MonoBehaviour
+public class SubController : MonoBehaviour, IPlayer
 {
     public float moveForce = 10f;
     public float turnForce = 0.1f;
@@ -17,6 +17,8 @@ public class SubController : MonoBehaviour
     
     private Rigidbody rb;
     public Rigidbody Rigidbody => rb;
+    Transform IPlayer.Transform => transform;
+    private bool _playerRegistered;
 
     [SerializeField] private CamSwitcher camSwitcher;
     
@@ -53,6 +55,9 @@ public class SubController : MonoBehaviour
     
     void OnEnable()
     {
+        GameServices.EnsureInitialized().Register<IPlayer>(this);
+        _playerRegistered = true;
+
         if (moveAction == null || forwardAction == null) return;
         
         moveAction.Enable();
@@ -66,6 +71,12 @@ public class SubController : MonoBehaviour
     
     void OnDisable()
     {
+        if (_playerRegistered)
+        {
+            GameServices.Resolver?.Unregister<IPlayer>();
+            _playerRegistered = false;
+        }
+
         if (moveAction == null || forwardAction == null) return;
         
         moveAction.performed -= OnMove;

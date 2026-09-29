@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class AutomationLogicSystem
+public class AutomationLogicSystem : IAutomationSystem, System.IDisposable
 {
     readonly List<AutomationNode> _nodes = new();
     readonly List<AutomationEdge> _edges = new();
@@ -9,19 +9,16 @@ public class AutomationLogicSystem
     readonly Dictionary<Pipe, AutomationEdge> _pipeToEdge = new();
     readonly HashSet<AutomationEdge> _minerSubEdges = new();
 
-    readonly Inventory _inventory;
+    readonly IInventory _inventory;
 
     int _nextNodeId;
     int _nextEdgeId;
 
     const float OrePerSecondPerMiner = 1f;
 
-    public AutomationLogicSystem(Inventory inventory)
+    public AutomationLogicSystem(IInventory inventory)
     {
         _inventory = inventory;
-
-        Pipe.Destroyed += HandlePipeDestroyed;
-        Machine.Destroyed += HandleMachineDestroyed;
     }
 
     public IReadOnlyList<AutomationNode> Nodes => _nodes;
@@ -30,8 +27,6 @@ public class AutomationLogicSystem
 
     public void Dispose()
     {
-        Pipe.Destroyed -= HandlePipeDestroyed;
-        Machine.Destroyed -= HandleMachineDestroyed;
     }
 
     public AutomationNode CreateNode(Machine machine)
@@ -133,7 +128,7 @@ public class AutomationLogicSystem
         RemoveNode(node, machine);
     }
 
-    void HandlePipeDestroyed(Pipe pipe)
+    public void NotifyPipeDestroyed(Pipe pipe)
     {
         if (pipe == null || !_pipeToEdge.TryGetValue(pipe, out AutomationEdge edge))
             return;
@@ -141,7 +136,7 @@ public class AutomationLogicSystem
         RemoveEdge(edge, destroyPipeObject: false);
     }
 
-    void HandleMachineDestroyed(Machine machine)
+    public void NotifyMachineDestroyed(Machine machine)
     {
         if (machine == null || !_machineToNode.TryGetValue(machine, out AutomationNode node))
             return;

@@ -66,7 +66,7 @@ public class RuntimeDebugController : MonoBehaviour
     ChunkBuilder _chunkBuilder;
     ChunkStreamer _chunkStreamer;
     SpawnManager _spawnManager;
-    FishSpawnSystem _fishSpawnSystem;
+    IFishSystem _fishSpawnSystem;
     SDFAtlas _sdfAtlas;
 
     bool _appliedGenerateMesh = true;
@@ -84,21 +84,18 @@ public class RuntimeDebugController : MonoBehaviour
     bool _menuOpen = true;
     int _selectedIndex;
 
-    public void Init(
-        ChunkBuilder chunkBuilder,
-        ChunkStreamer chunkStreamer,
-        SpawnManager spawnManager,
-        FishSpawnSystem fishSpawnSystem,
-        SDFAtlas sdfAtlas)
+    bool _initialized;
+
+    void Init(ITerrainDebug terrain, IFishSystem fishSpawnSystem)
     {
-        _chunkBuilder = chunkBuilder;
-        _chunkStreamer = chunkStreamer;
-        _spawnManager = spawnManager;
+        _chunkBuilder = terrain.ChunkBuilder;
+        _chunkStreamer = terrain.ChunkStreamer;
+        _spawnManager = terrain.SpawnManager;
         _fishSpawnSystem = fishSpawnSystem;
-        _sdfAtlas = sdfAtlas;
+        _sdfAtlas = terrain.SDFAtlas;
 
         if (_fishSpawnSystem != null)
-            fishMaxInstances = SnapToNearest(FishCountOptions, _fishSpawnSystem.maxInstances);
+            fishMaxInstances = SnapToNearest(FishCountOptions, _fishSpawnSystem.MaxInstances);
 
         targetFrameRate = SnapToNearest(FrameRateOptions, Application.targetFrameRate);
 
@@ -117,16 +114,24 @@ public class RuntimeDebugController : MonoBehaviour
         SetMenuOpen(_menuOpen);
         Apply();
         RefreshMenuLabel();
+        _initialized = true;
     }
 
     void Start()
     {
+        var resolver = GameServices.EnsureInitialized();
+        resolver.TryResolve<IFishSystem>(out var fish);
+        Init(resolver.Resolve<ITerrainDebug>(), fish);
+
         SetMenuOpen(_menuOpen);
         ApplyShowFps();
     }
 
     void Update()
     {
+        if (_initialized)
+            Apply();
+
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.periodKey.wasPressedThisFrame)
             SetMenuOpen(!_menuOpen);
@@ -358,7 +363,7 @@ public class RuntimeDebugController : MonoBehaviour
 
             if (fishMaxInstances != _appliedFishMaxInstances)
             {
-                _fishSpawnSystem.maxInstances = fishMaxInstances;
+                _fishSpawnSystem.MaxInstances = fishMaxInstances;
                 _fishSpawnSystem.Reload();
                 _appliedFishMaxInstances = fishMaxInstances;
             }

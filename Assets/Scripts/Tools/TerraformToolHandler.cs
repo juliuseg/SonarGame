@@ -3,15 +3,15 @@ using UnityEngine.InputSystem;
 
 public class TerraformToolHandler
 {
-    readonly ChunkStreamer _chunkStreamer;
+    readonly ITerrainEditor _terrainEditor;
     readonly TerraformToolSettings _settings;
     readonly Camera _camera;
 
     GameObject _pointer;
 
-    public TerraformToolHandler(ChunkStreamer chunkStreamer, TerraformToolSettings settings, Camera camera)
+    public TerraformToolHandler(ITerrainEditor terrainEditor, TerraformToolSettings settings, Camera camera)
     {
-        _chunkStreamer = chunkStreamer;
+        _terrainEditor = terrainEditor;
         _settings = settings;
         _camera = camera;
     }
@@ -65,7 +65,7 @@ public class TerraformToolHandler
 
     void ApplyTerraform(RaycastHit hit, float multiplier)
     {
-        _chunkStreamer.ApplyTerraformEdit(new TerraformEdit
+        _terrainEditor.ApplyTerraformEdit(new TerraformEdit
         {
             position = hit.point,
             strength = _settings.terraformStrength * multiplier,

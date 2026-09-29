@@ -7,7 +7,7 @@ public class PipeToolHandler
     readonly PipeToolSettings _settings;
     readonly Camera _camera;
     readonly Transform _pipeParent;
-    readonly AutomationLogicSystem _automationLogic;
+    readonly IAutomationSystem _automationLogic;
     readonly HashSet<PipeNodeController> _warnedOrphanNodes = new();
 
     PipeNodeController _startNode;
@@ -17,7 +17,7 @@ public class PipeToolHandler
     MeshFilter _previewMeshFilter;
     MeshRenderer _previewMeshRenderer;
 
-    public PipeToolHandler(PipeToolSettings settings, Camera camera, Transform pipeParent, AutomationLogicSystem automationLogic)
+    public PipeToolHandler(PipeToolSettings settings, Camera camera, Transform pipeParent, IAutomationSystem automationLogic)
     {
         _settings = settings;
         _camera = camera;

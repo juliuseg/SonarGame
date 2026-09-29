@@ -7,22 +7,21 @@ public class SeaSnakeSpawnSystem : MonoBehaviour
 
     readonly List<GameObject> _spawned = new();
 
-    AutomationLogicSystem _automation;
+    IAutomationSystem _automation;
     Transform _player;
-    ChunkManager _chunkManager;
     float _nextSpawnTime;
 
-    public void Init(AutomationLogicSystem automation, Transform player, ChunkManager chunkManager)
+    void Start()
     {
-        _automation = automation;
-        _player = player;
-        _chunkManager = chunkManager;
+        var resolver = GameServices.EnsureInitialized();
+        _automation = resolver.Resolve<IAutomationSystem>();
+        _player = resolver.Resolve<IPlayer>().Transform;
         ScheduleNextSpawn();
     }
 
-    public void Tick()
+    void Update()
     {
-        if (settings == null || settings.prefab == null || _player == null || _chunkManager == null)
+        if (settings == null || settings.prefab == null || _player == null)
             return;
 
         if (_automation == null || !_automation.IsMiningActive)
@@ -120,7 +119,7 @@ public class SeaSnakeSpawnSystem : MonoBehaviour
         if (mover != null)
         {
             mover.target = _player;
-            mover.Init(_chunkManager, _player);
+            mover.Init(_player);
         }
     }
 }

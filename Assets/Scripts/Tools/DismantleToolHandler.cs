@@ -5,11 +5,11 @@ public class DismantleToolHandler
 {
     readonly DismantleToolSettings _settings;
     readonly Camera _camera;
-    readonly AutomationLogicSystem _automationLogic;
+    readonly IAutomationSystem _automationLogic;
 
     GameObject _pointer;
 
-    public DismantleToolHandler(DismantleToolSettings settings, Camera camera, AutomationLogicSystem automationLogic)
+    public DismantleToolHandler(DismantleToolSettings settings, Camera camera, IAutomationSystem automationLogic)
     {
         _settings = settings;
         _camera = camera;

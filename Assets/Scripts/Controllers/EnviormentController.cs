@@ -16,9 +16,14 @@ public class EnviormentController : MonoBehaviour
     public bool setFog = false;
     public GameObject debugLight;
     
-    [Header("Player Reference")]
-    public Transform playerTransform;
-    
+    Transform playerTransform;
+
+    void Start()
+    {
+        if (GameServices.EnsureInitialized().TryResolve<IPlayer>(out var player))
+            playerTransform = player.Transform;
+    }
+
     void Update()
     {
         if (playerTransform == null) return;

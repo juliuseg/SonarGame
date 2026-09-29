@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class FogLightManager : MonoBehaviour
+public class FogLightManager : MonoBehaviour, IFogLightRegistry
 {
     const int MaxFogLights = 8;
 
@@ -15,15 +15,28 @@ public class FogLightManager : MonoBehaviour
     readonly Vector4[] _color      = new Vector4[MaxFogLights];
     readonly Vector4[] _spotParams = new Vector4[MaxFogLights];
 
+    readonly System.Collections.Generic.List<FogLight> _lights = new();
+
+    public void Add(FogLight light)
+    {
+        if (!_lights.Contains(light))
+            _lights.Add(light);
+    }
+
+    public void Remove(FogLight light) => _lights.Remove(light);
+
+    void OnEnable() => GameServices.EnsureInitialized().Register<IFogLightRegistry>(this);
+
+    void OnDisable() => GameServices.Resolver?.Unregister<IFogLightRegistry>();
+
     void LateUpdate()
     {
-        var lights = FindObjectsByType<FogLight>(FindObjectsSortMode.None);
-        int count  = Mathf.Min(lights.Length, MaxFogLights);
+        int count = Mathf.Min(_lights.Count, MaxFogLights);
 
         for (int i = 0; i < count; i++)
         {
-            var t = lights[i].transform;
-            var l = lights[i].Light;
+            var t = _lights[i].transform;
+            var l = _lights[i].Light;
 
             _pos[i] = new Vector4(t.position.x, t.position.y, t.position.z, l.range);
             _dir[i] = t.forward;
