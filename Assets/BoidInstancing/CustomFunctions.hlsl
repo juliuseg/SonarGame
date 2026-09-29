@@ -5,13 +5,15 @@
 
 void GetSandColor_float(float BiomeID, out float4 Out)
 {
-    if (BiomeID == 0) {
+    // Vertex colors are interpolated, so an ID of 1 can arrive as 0.99999994 on some GPUs. Round before comparing.
+    int id = (int)round(BiomeID);
+    if (id == 0) {
         Out = _SandColor;
-    } else if (BiomeID == 1) {
+    } else if (id == 1) {
         Out = _RedSandColor;
-    } else if (BiomeID == 2) {
+    } else if (id == 2) {
         Out = _GreenSandColor;
-    } else if (BiomeID == 3) {
+    } else if (id == 3) {
         Out = _OpenBiomeColor;
     } else {
         Out = _RockColor;
