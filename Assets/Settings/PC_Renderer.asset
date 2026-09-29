@@ -84,7 +84,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 424b51219a54042c9869aa3a24830bfc, type: 3}
   m_Name: VolumetricFogRenderFeature
   m_EditorClassIdentifier: Assembly-CSharp::VolumetricFogRenderFeature
-  m_Active: 0
+  m_Active: 1
   settings:
     fogMaterial: {fileID: 2100000, guid: 190e7f50e0ca640898d6b94f61843e66, type: 2}
     upscaleMaterial: {fileID: 2100000, guid: a7481d128a67246d493ff72e577f377a, type: 2}
