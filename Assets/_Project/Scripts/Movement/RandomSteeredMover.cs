@@ -100,22 +100,13 @@ public class RandomSteeredMover : MonoBehaviour
 
     void Start()
     {
-        _chunkManager ??= ResolveSampler();
+        var resolver = GameServices.EnsureInitialized();
+        resolver.TryResolve(out _chunkManager);
+        if (target == null && resolver.TryResolve<IPlayer>(out var player))
+            target = player.Transform;
+
         if (!_ready)
             SetupState(target, warnNoSdf: true);
-    }
-
-    static ISdfSampler ResolveSampler()
-    {
-        GameServices.EnsureInitialized().TryResolve<ISdfSampler>(out var sampler);
-        return sampler;
-    }
-
-    public void Init(Transform initialHeadingTarget = null)
-    {
-        _chunkManager = ResolveSampler();
-        Transform headingTarget = initialHeadingTarget != null ? initialHeadingTarget : target;
-        SetupState(headingTarget, warnNoSdf: false);
     }
 
     void SetupState(Transform headingTarget, bool warnNoSdf)

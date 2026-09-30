@@ -20,7 +20,7 @@ public class SubController : MonoBehaviour, IPlayer
     Transform IPlayer.Transform => transform;
     private bool _playerRegistered;
 
-    [SerializeField] private CamSwitcher camSwitcher;
+    private ICameraMode _cameraMode;
     
     void Awake()
     {
@@ -90,12 +90,13 @@ public class SubController : MonoBehaviour, IPlayer
     
     void Start()
     {
+        GameServices.EnsureInitialized().TryResolve(out _cameraMode);
         Cursor.lockState = CursorLockMode.Locked;
     }
     
     void FixedUpdate()
     {
-        if (!camSwitcher.camFollow.enabled) return;
+        if (_cameraMode != null && !_cameraMode.IsFollowingPlayer) return;
         if (rb == null) return;
         
         // Yaw rotation (A/D from Move action)

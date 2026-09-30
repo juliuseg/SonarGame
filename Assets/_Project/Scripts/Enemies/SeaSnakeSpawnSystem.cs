@@ -119,7 +119,6 @@ public class SeaSnakeSpawnSystem : MonoBehaviour
         if (mover != null)
         {
             mover.target = _player;
-            mover.Init(_player);
         }
     }
 }

@@ -3,7 +3,7 @@ using UnityEngine.InputSystem;
 using TMPro;
 
 [RequireComponent(typeof(CamFollow), typeof(FreeCameraController))]
-public class CamSwitcher : MonoBehaviour
+public class CamSwitcher : MonoBehaviour, ICameraMode
 {
     public CamFollow camFollow;
     public FreeCameraController freeCameraController;
@@ -20,6 +20,12 @@ public class CamSwitcher : MonoBehaviour
     [SerializeField] private float distToEnterSub;
 
     [SerializeField] private GameObject enterSubText;
+
+    public bool IsFollowingPlayer => camFollow != null && camFollow.enabled;
+
+    void OnEnable() => GameServices.EnsureInitialized().Register<ICameraMode>(this);
+
+    void OnDisable() => GameServices.Resolver?.Unregister<ICameraMode>();
 
     void Start()
     {

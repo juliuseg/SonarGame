@@ -285,17 +285,17 @@ MonoBehaviour:
   fishCompute: {fileID: 7200000, guid: 04a76206adf754cbca2279f36a9da134, type: 3}
   meshSwimUp: {x: 0, y: 1, z: 0}
   meshOrientationOffset: {x: -90, y: 90, z: 90}
-  maxInstances: 2000
-  fishScale: 13
-  swimSpeed: 3
-  minSwimSpeed: 1.7
+  maxInstances: 10000
+  fishScale: 5
+  swimSpeed: 1.3
+  minSwimSpeed: 0.6
   maxSteerForce: 4
-  speedAccel: 3
-  boidNeighborRadius: 5
-  boidSeparationRadius: 4
+  speedAccel: 2
+  boidNeighborRadius: 1.3
+  boidSeparationRadius: 0.7
   weightSeparation: 1.5
   weightAlignment: 1
-  weightCohesion: 0.5
+  weightCohesion: 1.6
   sdfAvoidRadius: 4
   sdfAvoidWeight: 100
   sdfGradientDelta: 0.5
@@ -305,17 +305,16 @@ MonoBehaviour:
   sdfThreatSuppress: 0.95
   threatTransforms:
   - {fileID: 765039362}
-  - {fileID: 0}
   maxThreats: 16
   threatAvoidRadius: 16
-  threatAvoidWeight: 40
-  threatPanicRadius: 6
-  panicSpeedMultiplier: 5
-  panicAccel: 24
+  threatAvoidWeight: 20
+  threatPanicRadius: 10
+  panicSpeedMultiplier: 3
+  panicAccel: 5
   panicBoostDuration: 1.5
-  schoolSize: 20
-  schoolCenterSeparation: 10
-  schoolMemberSpread: 1.5
+  schoolSize: 50
+  schoolCenterSeparation: 6
+  schoolMemberSpread: 0.5
   strayPercent: 0.15
   strayCutoff: 7
   logDrawCount: 1

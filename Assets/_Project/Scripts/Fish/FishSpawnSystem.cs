@@ -74,7 +74,6 @@ public class FishSpawnSystem : MonoBehaviour, IFishSystem
 
     [Header("Threat Avoidance")]
     [Tooltip("Player, large enemies, etc. Fish steer away when within radius.")]
-    public List<Transform> threatTransforms = new();
     [Min(1)] public int maxThreats = 16;
     [Min(0.1f)] public float threatAvoidRadius = 10f;
     [Min(0f)] public float threatAvoidWeight = 18f;
@@ -108,6 +107,7 @@ public class FishSpawnSystem : MonoBehaviour, IFishSystem
     private SDFAtlas _sdfAtlas;
     private MCSettings _mcSettings;
     private IStreamingFocus _focus;
+    private IPlayer _player;
     private Vector3 _chunkSizeWorld;
 
     private Material[] _drawMaterials;
@@ -196,6 +196,7 @@ public class FishSpawnSystem : MonoBehaviour, IFishSystem
         _sdfAtlas = terrain.SDFAtlas;
         _mcSettings = mcSettings;
         _focus = resolver.Resolve<IStreamingFocus>();
+        resolver.TryResolve(out _player);
         _chunkSizeWorld = mcSettings != null
             ? Vector3.Scale(mcSettings.scale, mcSettings.chunkDims)
             : _chunkManager.GetChunkSize();
@@ -1108,25 +1109,14 @@ public class FishSpawnSystem : MonoBehaviour, IFishSystem
 
     private int UploadThreatPositions()
     {
-        if (threatTransforms == null || _threatScratch == null)
+        if (_player == null || _threatScratch == null || _threatScratch.Length == 0)
             return 0;
 
-        int capacity = _threatScratch.Length;
-        int count = 0;
-        for (int i = 0; i < threatTransforms.Count && count < capacity; i++)
-        {
-            Transform t = threatTransforms[i];
-            if (t == null)
-                continue;
-            Vector3 p = t.position;
-            _threatScratch[count] = new Vector4(p.x, p.y, p.z, 0f);
-            count++;
-        }
+        Vector3 p = _player.Transform.position;
+        _threatScratch[0] = new Vector4(p.x, p.y, p.z, 0f);
+        _threatBuffer.SetData(_threatScratch, 0, 0, 1);
 
-        if (count > 0)
-            _threatBuffer.SetData(_threatScratch, 0, 0, count);
-
-        return count;
+        return 1;
     }
 
     private void DispatchBoidUpdate()
