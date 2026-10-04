@@ -22,6 +22,9 @@ public class PathfindingGraphBuilder
     }
 
     private const int RaysPerNode = 12;
+    private const float ClearanceRayEpsilon = 0.02f;
+    private const float MergeMinNormalDot = 0.7f;
+    private const int EdgeRebuildLinksPerFrame = 1000;
 
     private readonly PathfindingGraphSettings settings;
 
@@ -34,6 +37,10 @@ public class PathfindingGraphBuilder
     public bool IsBuilt => sourceNode != null && !IsBuilding;
     public Vector3 SourcePosition => sourceNode != null ? sourceNode.position : Vector3.zero;
     public IReadOnlyList<Node> Nodes => nodes;
+
+    // Candidate points rejected by the clearance check. Debug only.
+    private readonly List<Vector3> rejectedPoints = new List<Vector3>();
+    public IReadOnlyList<Vector3> RejectedPoints => rejectedPoints;
 
     public PathfindingGraphBuilder(PathfindingGraphSettings settings)
     {
@@ -70,6 +77,17 @@ public class PathfindingGraphBuilder
             if (batch.Count == 0) continue;
 
             yield return ExpandBatch(batch, frontier);
+        }
+
+        if (settings.rebuildEdgesAfterBuild)
+        {
+            int before = nodes.Count;
+            var originalEdges = SnapshotEdges();
+            var mergedInto = new Dictionary<Node, Node>();
+            MergeCloseNodes(mergedInto);
+            yield return RebuildEdges(originalEdges, mergedInto);
+            RecomputeDistances();
+            Debug.Log($"[GraphBuilder] Merged/dropped {before - nodes.Count} of {before} nodes, edges rebuilt.");
         }
 
         Debug.Log($"[GraphBuilder] Built graph: {nodes.Count} nodes, {CountEdges()} edges.");
@@ -154,6 +172,15 @@ public class PathfindingGraphBuilder
                 else if (bHit) { hitPoint = hitB.point; hitNormal = hitB.normal; }
                 else continue;
 
+                // Reject points with no open space above them (right next to a hole, or squeezed under geometry).
+                if (settings.clearanceRayLength > 0f &&
+                    Physics.Raycast(hitPoint + hitNormal * ClearanceRayEpsilon, hitNormal, settings.clearanceRayLength,
+                        settings.wallMask, QueryTriggerInteraction.Ignore))
+                {
+                    rejectedPoints.Add(hitPoint);
+                    continue;
+                }
+
                 Node target = FindNearbyNode(hitPoint, settings.hexLength * 0.5f);
                 if (target == null)
                 {
@@ -178,9 +205,157 @@ public class PathfindingGraphBuilder
         results.Dispose();
     }
 
+    // Merges nodes that ended up crowded together: walking from the source outward, each surviving node absorbs
+    // (removes) the nodes within mergeRadius of it that face the same way. The facing check keeps nodes on opposite
+    // sides of a thin wall from merging. Survivors keep their own position, so they stay on the surface.
+    private void MergeCloseNodes(Dictionary<Node, Node> mergedInto)
+    {
+        float radius = settings.hexLength * settings.mergeRadius;
+        var order = new List<Node>(nodes);
+        order.Sort((a, b) => a.distFromSource.CompareTo(b.distFromSource));
+
+        var buffer = new List<Node>();
+        foreach (var node in order)
+        {
+            // Absorbed nodes were already taken out of the spatial hash, but their entry in 'order' remains.
+            if (!nodes.Contains(node)) continue;
+
+            GatherNearbyNodes(node.position, radius, buffer);
+            for (int i = 0; i < buffer.Count; i++)
+            {
+                Node other = buffer[i];
+                if (other == node || other == sourceNode) continue;
+                if (Vector3.Dot(node.normal, other.normal) < MergeMinNormalDot) continue;
+                mergedInto[other] = node;
+                RemoveNode(other);
+            }
+        }
+    }
+
+    // Every edge of the graph as it stands, one entry per link.
+    private List<(Node a, Node b)> SnapshotEdges()
+    {
+        var result = new List<(Node a, Node b)>();
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            Node a = nodes[i];
+            for (int e = 0; e < a.edges.Count; e++)
+            {
+                Node b = a.edges[e].target;
+                if (a.GetHashCode() <= b.GetHashCode())
+                    result.Add((a, b));
+            }
+        }
+        return result;
+    }
+
+    // The surviving node that a (possibly merged-away) node ended up as.
+    private static Node ResolveMerged(Node node, Dictionary<Node, Node> mergedInto)
+    {
+        while (mergedInto.TryGetValue(node, out Node next))
+            node = next;
+        return node;
+    }
+
+    // Rebuilds the edges from scratch, but only from the original build's edges: an original link A-B is carried over
+    // (remapped onto whatever A and B were merged into) if the ends are within edgeRadius and the wall check passes.
+    // Nothing the original build didn't link is ever added. Spread over frames, since it may linecast per link.
+    private IEnumerator RebuildEdges(List<(Node a, Node b)> originalEdges, Dictionary<Node, Node> mergedInto)
+    {
+        for (int i = 0; i < nodes.Count; i++)
+            nodes[i].edges.Clear();
+
+        float maxLength = settings.hexLength * settings.edgeRadius;
+        float trustLength = settings.hexLength * settings.edgeTrustRadius;
+
+        for (int n = 0; n < originalEdges.Count; n++)
+        {
+            Node a = ResolveMerged(originalEdges[n].a, mergedInto);
+            Node b = ResolveMerged(originalEdges[n].b, mergedInto);
+
+            if (a != b && !IsNeighbour(a, b))
+            {
+                float dist = Vector3.Distance(a.position, b.position);
+                if (dist <= maxLength)
+                {
+                    // Close, same-facing nodes are on the same surface: skip the wall check, which a small
+                    // bump between them could otherwise block.
+                    bool trusted = dist <= trustLength && Vector3.Dot(a.normal, b.normal) >= MergeMinNormalDot;
+
+                    if (trusted || !WallBetween(a, b))
+                        AddEdgeIfMissing(a, b, dist);
+                }
+            }
+
+            if (n % EdgeRebuildLinksPerFrame == EdgeRebuildLinksPerFrame - 1)
+                yield return null;
+        }
+    }
+
+    private bool WallBetween(Node a, Node b)
+    {
+        Vector3 pa = a.position + a.normal * settings.edgeLift;
+        Vector3 pb = b.position + b.normal * settings.edgeLift;
+        return Physics.Linecast(pa, pb, settings.wallMask, QueryTriggerInteraction.Ignore);
+    }
+
+    // Merging and relinking change the edges, so redo Dijkstra over the final graph
+    // and drop anything the source can no longer reach.
+    private void RecomputeDistances()
+    {
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            nodes[i].distFromSource = float.PositiveInfinity;
+            nodes[i].explored = false;
+        }
+
+        sourceNode.distFromSource = 0f;
+        var frontier = new List<Node> { sourceNode };
+        while (frontier.Count > 0)
+        {
+            Node current = PopClosest(frontier);
+            if (current.explored) continue;
+            current.explored = true;
+
+            for (int i = 0; i < current.edges.Count; i++)
+            {
+                Edge e = current.edges[i];
+                float newDist = current.distFromSource + e.weight;
+                if (newDist < e.target.distFromSource)
+                {
+                    e.target.distFromSource = newDist;
+                    frontier.Add(e.target);
+                }
+            }
+        }
+
+        var unreachable = nodes.FindAll(n => float.IsInfinity(n.distFromSource));
+        for (int i = 0; i < unreachable.Count; i++)
+            RemoveNode(unreachable[i]);
+    }
+
+    private static bool IsNeighbour(Node a, Node b)
+    {
+        for (int i = 0; i < a.edges.Count; i++)
+            if (a.edges[i].target == b) return true;
+        return false;
+    }
+
+    private void RemoveNode(Node node)
+    {
+        for (int i = 0; i < node.edges.Count; i++)
+            node.edges[i].target.edges.RemoveAll(e => e.target == node);
+        node.edges.Clear();
+
+        if (spatialHash.TryGetValue(CellOf(node.position), out var cell))
+            cell.Remove(node);
+        nodes.Remove(node);
+    }
+
     private void ResetGraph()
     {
         nodes.Clear();
+        rejectedPoints.Clear();
         cellSize = settings.hexLength * 0.5f;
         spatialHash = new Dictionary<Vector3Int, List<Node>>();
         sourceNode = null;
@@ -304,13 +479,20 @@ public class PathfindingGraphBuilder
         }
     }
 
-    public bool SampleGradient(Vector3 from, float radius, out Vector3 direction, out Vector3 surfaceNormal)
+    // Tolerance is in hex lengths, so search distances scale with the graph's resolution.
+    public float ToleranceToRadius(float tolerance) => settings.hexLength * tolerance;
+
+    public bool SampleGradient(Vector3 from, float tolerance, out Vector3 direction, out Vector3 surfaceNormal)
     {
+        float radius = ToleranceToRadius(tolerance);
         direction = Vector3.zero;
         surfaceNormal = Vector3.up;
 
         var nearby = new List<Node>();
         GatherNearbyNodes(from, radius, nearby);
+
+        // Unexplored boundary nodes keep distFromSource = Infinity and would poison the math with NaN.
+        nearby.RemoveAll(n => float.IsInfinity(n.distFromSource));
         if (nearby.Count == 0) return false;
 
         const float eps = 0.0001f;

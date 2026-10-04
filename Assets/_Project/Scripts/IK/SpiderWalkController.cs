@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -66,6 +67,9 @@ public class SpiderWalkController : MonoBehaviour
     public float legRaycastAimBelowBody = 10f;
 
     public float maxRaycastDistance = 10f;
+
+    [Tooltip("The body-down rays start this far above the body origin, so they still hit when the origin sits on or slightly inside the surface (e.g. bodyHeight 0).")]
+    public float groundRayHeadroom = 0.25f;
     public LayerMask raycastLayers = ~0;
     public QueryTriggerInteraction triggerInteraction = QueryTriggerInteraction.Ignore;
 
@@ -79,6 +83,10 @@ public class SpiderWalkController : MonoBehaviour
 
     float _deltaTime;
     bool[] _legMissWarned;
+    // True once a leg has landed a step on real ground; feet that haven't yet are ignored for the feet plane.
+    bool[] _legGrounded;
+    readonly List<Vector3> _feetBuffer = new List<Vector3>();
+    readonly List<float> _feetAngles = new List<float>();
     LegStepState[] _legSteps;
     Vector3[] _legWorldPositions;
     bool _legWorldPositionsInitialized;
@@ -96,8 +104,23 @@ public class SpiderWalkController : MonoBehaviour
     bool _standStillAnchorInitialized;
     bool _isStandingStill;
 
+    /// <summary>
+    /// Uniform scale of the root. All distance fields below are authored at scale 1 and multiplied by this.
+    /// </summary>
+    public float Scale => transform.lossyScale.x;
+
+    float MaxRaycastDistance => maxRaycastDistance * Scale;
+
+    void WarnIfNonUniformScale()
+    {
+        Vector3 s = transform.lossyScale;
+        if (Mathf.Abs(s.x - s.y) > 1e-3f * s.x || Mathf.Abs(s.x - s.z) > 1e-3f * s.x)
+            Debug.LogWarning($"SpiderWalkController: root scale {s} is non-uniform. Distances assume a uniform scale (using X).", this);
+    }
+
     void Start()
     {
+        WarnIfNonUniformScale();
         InitializeLegWorldPositions();
         ResetStandStillAnchor();
     }
@@ -123,7 +146,7 @@ public class SpiderWalkController : MonoBehaviour
         float planarMove = Vector3.ProjectOnPlane(delta, transform.up).magnitude;
         float rotateDelta = Quaternion.Angle(_standStillAnchorRotation, transform.rotation);
 
-        if (planarMove > standStillMoveTolerance || rotateDelta > standStillRotateTolerance)
+        if (planarMove > standStillMoveTolerance * Scale || rotateDelta > standStillRotateTolerance)
         {
             ResetStandStillAnchor();
             return;
@@ -192,10 +215,17 @@ public class SpiderWalkController : MonoBehaviour
 
     void MaintainBodyHeight()
     {
-        Vector3 down = -transform.up;
-        Vector3 origin = transform.position;
+        if (TryGetFeetPlane(out Vector3 feetCenter, out Vector3 feetNormal))
+        {
+            ApplyFeetPlane(feetCenter, feetNormal);
+            return;
+        }
 
-        if (!Physics.Raycast(origin, down, out RaycastHit hit, maxRaycastDistance, raycastLayers, triggerInteraction))
+        float headroom = groundRayHeadroom * Scale;
+        Vector3 down = -transform.up;
+        Vector3 origin = transform.position + transform.up * headroom;
+
+        if (!Physics.Raycast(origin, down, out RaycastHit hit, MaxRaycastDistance + headroom, raycastLayers, triggerInteraction))
         {
             _hasDebugGroundHit = false;
             return;
@@ -208,15 +238,124 @@ public class SpiderWalkController : MonoBehaviour
         AlignToGroundNormal(hit);
 
         down = -transform.up;
-        if (!Physics.Raycast(transform.position, down, out hit, maxRaycastDistance, raycastLayers, triggerInteraction))
+        origin = transform.position + transform.up * headroom;
+        if (!Physics.Raycast(origin, down, out hit, MaxRaycastDistance + headroom, raycastLayers, triggerInteraction))
             return;
 
-        float correction = hit.distance - bodyHeight;
+        float correction = (hit.distance - headroom) - bodyHeight * Scale;
         if (Mathf.Abs(correction) < 1e-4f)
             return;
 
         float t = 1f - Mathf.Exp(-bodyHeightLerpSpeed * _deltaTime);
         transform.position -= transform.up * (correction * t);
+    }
+
+    // Plane through the planted, grounded feet: their centre and a normal facing the body's current up side.
+    // Returns false (so the single down-ray is used instead) with fewer than 3 usable feet or a degenerate layout.
+    bool TryGetFeetPlane(out Vector3 center, out Vector3 normal)
+    {
+        center = Vector3.zero;
+        normal = Vector3.up;
+
+        if (legs == null || !_legWorldPositionsInitialized)
+            return false;
+
+        EnsureLegArrays();
+
+        _feetBuffer.Clear();
+        for (int i = 0; i < legs.Length; i++)
+        {
+            if (legs[i].ikTarget == null || _legSteps[i].stepping || !_legGrounded[i])
+                continue;
+            _feetBuffer.Add(_legWorldPositions[i]);
+        }
+
+        int count = _feetBuffer.Count;
+        if (count < 3)
+            return false;
+
+        Vector3 c = Vector3.zero;
+        for (int i = 0; i < count; i++)
+            c += _feetBuffer[i];
+        c /= count;
+
+        // Order the feet by angle around the body's up so the polygon winding doesn't depend on the leg array order.
+        Vector3 up = transform.up;
+        Vector3 refDir = Vector3.ProjectOnPlane(_feetBuffer[0] - c, up);
+        if (refDir.sqrMagnitude < 1e-8f)
+            return false;
+
+        _feetAngles.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 d = Vector3.ProjectOnPlane(_feetBuffer[i] - c, up);
+            _feetAngles.Add(d.sqrMagnitude < 1e-8f ? 0f : Vector3.SignedAngle(refDir, d, up));
+        }
+
+        // Insertion sort of the (tiny) feet list by angle.
+        for (int i = 1; i < count; i++)
+        {
+            float angle = _feetAngles[i];
+            Vector3 pos = _feetBuffer[i];
+            int j = i - 1;
+            while (j >= 0 && _feetAngles[j] > angle)
+            {
+                _feetAngles[j + 1] = _feetAngles[j];
+                _feetBuffer[j + 1] = _feetBuffer[j];
+                j--;
+            }
+            _feetAngles[j + 1] = angle;
+            _feetBuffer[j + 1] = pos;
+        }
+
+        Vector3 n = Vector3.zero;
+        for (int i = 0; i < count; i++)
+            n += Vector3.Cross(_feetBuffer[i] - c, _feetBuffer[(i + 1) % count] - c);
+
+        if (n.sqrMagnitude < 1e-8f)
+            return false;
+
+        n.Normalize();
+        if (Vector3.Dot(n, up) < 0f)
+            n = -n;
+
+        center = c;
+        normal = n;
+        return true;
+    }
+
+    // Tilts the body toward the feet plane (pivoting about the feet centre) and eases it to bodyHeight above that plane.
+    // Only height and tilt are corrected; sideways movement is left to whatever drives the transform.
+    void ApplyFeetPlane(Vector3 center, Vector3 normal)
+    {
+        _hasDebugGroundHit = true;
+        _debugGroundHitPoint = center;
+        _debugGroundNormal = normal;
+
+        Vector3 forward = Vector3.ProjectOnPlane(transform.forward, normal);
+        if (forward.sqrMagnitude < 1e-6f)
+            forward = Vector3.ProjectOnPlane(transform.right, normal);
+        if (forward.sqrMagnitude < 1e-6f)
+            return;
+
+        Quaternion targetRotation = Quaternion.LookRotation(forward.normalized, normal);
+        float rotT = 1f - Mathf.Exp(-groundNormalLerpSpeed * _deltaTime);
+        Quaternion newRotation = Quaternion.Slerp(transform.rotation, targetRotation, rotT);
+
+        if (Quaternion.Angle(transform.rotation, newRotation) >= 0.01f)
+        {
+            Quaternion deltaRotation = newRotation * Quaternion.Inverse(transform.rotation);
+            transform.position = center + deltaRotation * (transform.position - center);
+            transform.rotation = newRotation;
+        }
+
+        float height = Vector3.Dot(transform.position - center, transform.up);
+        float correction = height - bodyHeight * Scale;
+        if (Mathf.Abs(correction) < 1e-4f)
+            return;
+
+        float heightT = 1f - Mathf.Exp(-bodyHeightLerpSpeed * _deltaTime);
+        transform.position -= transform.up * (correction * heightT);
     }
 
     void AlignToGroundNormal(RaycastHit hit)
@@ -250,6 +389,8 @@ public class SpiderWalkController : MonoBehaviour
         int count = legs != null ? legs.Length : 0;
         if (_legMissWarned == null || _legMissWarned.Length != count)
             _legMissWarned = new bool[count];
+        if (_legGrounded == null || _legGrounded.Length != count)
+            _legGrounded = new bool[count];
         if (_legSteps == null || _legSteps.Length != count)
             _legSteps = new LegStepState[count];
         if (_legWorldPositions == null || _legWorldPositions.Length != count)
@@ -302,7 +443,7 @@ public class SpiderWalkController : MonoBehaviour
             ? legRaycastBodyReference.position
             : transform.position;
 
-        return referencePosition - transform.up * legRaycastAimBelowBody;
+        return referencePosition - transform.up * (legRaycastAimBelowBody * Scale);
     }
 
     bool TryLegGroundRaycast(Vector3 origin, out RaycastHit hit)
@@ -311,10 +452,10 @@ public class SpiderWalkController : MonoBehaviour
         Vector3 toAim = aimPoint - origin;
 
         if (toAim.sqrMagnitude < 1e-8f)
-            return Physics.Raycast(origin, -transform.up, out hit, maxRaycastDistance, raycastLayers, triggerInteraction);
+            return Physics.Raycast(origin, -transform.up, out hit, MaxRaycastDistance, raycastLayers, triggerInteraction);
 
         Vector3 direction = toAim.normalized;
-        float rayLength = toAim.magnitude + maxRaycastDistance;
+        float rayLength = toAim.magnitude + MaxRaycastDistance;
         return Physics.Raycast(origin, direction, out hit, rayLength, raycastLayers, triggerInteraction);
     }
 
@@ -326,19 +467,19 @@ public class SpiderWalkController : MonoBehaviour
         if (toAim.sqrMagnitude < 1e-8f)
         {
             direction = -transform.up;
-            rayLength = maxRaycastDistance;
+            rayLength = MaxRaycastDistance;
             return false;
         }
 
         direction = toAim.normalized;
-        rayLength = toAim.magnitude + maxRaycastDistance;
+        rayLength = toAim.magnitude + MaxRaycastDistance;
         return true;
     }
 
     Vector3 EvaluateStepPosition(Vector3 from, Vector3 to, float t)
     {
         Vector3 linear = Vector3.Lerp(from, to, t);
-        float lift = 4f * legStepArcHeight * t * (1f - t);
+        float lift = 4f * legStepArcHeight * Scale * t * (1f - t);
         return linear + transform.up * lift;
     }
 
@@ -352,7 +493,7 @@ public class SpiderWalkController : MonoBehaviour
         if (step.stepping)
             return false;
 
-        Vector3 origin = leg.raycastOrigin.position + horizontalMoveDir * raycastOriginVelocityOffset;
+        Vector3 origin = leg.raycastOrigin.position + horizontalMoveDir * (raycastOriginVelocityOffset * Scale);
 
         if (!TryLegGroundRaycast(origin, out RaycastHit hit))
         {
@@ -373,8 +514,8 @@ public class SpiderWalkController : MonoBehaviour
         Vector3 currentWorld = GetLegTargetWorldPosition(i);
         float distanceToTarget = Vector3.Distance(currentWorld, groundPoint);
 
-        bool normalStep = distanceToTarget > legStepDistance;
-        bool stabilizeStep = _isStandingStill && distanceToTarget > standStillStepMinDistance;
+        bool normalStep = distanceToTarget > legStepDistance * Scale;
+        bool stabilizeStep = _isStandingStill && distanceToTarget > standStillStepMinDistance * Scale;
         if (!normalStep && !stabilizeStep)
             return false;
 
@@ -413,6 +554,7 @@ public class SpiderWalkController : MonoBehaviour
                 step.t = 1f;
                 SetLegTargetWorldPosition(i, step.to);
                 step.stepping = false;
+                _legGrounded[i] = true;
             }
             else
             {
@@ -431,11 +573,11 @@ public class SpiderWalkController : MonoBehaviour
             return;
 
         Vector3 horizontalMoveDir = GetHorizontalMovementDirection();
-        Vector3 originLead = horizontalMoveDir * raycastOriginVelocityOffset;
+        Vector3 originLead = horizontalMoveDir * (raycastOriginVelocityOffset * Scale);
         Vector3 legAimPoint = GetLegRaycastAimPoint();
 
         Gizmos.color = Color.cyan;
-        Gizmos.DrawRay(transform.position, -transform.up * maxRaycastDistance);
+        Gizmos.DrawRay(transform.position, -transform.up * MaxRaycastDistance);
 
         Gizmos.color = new Color(0.4f, 0.8f, 1f);
         Gizmos.DrawWireSphere(legAimPoint, 0.1f);

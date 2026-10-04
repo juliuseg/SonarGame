@@ -303,8 +303,6 @@ MonoBehaviour:
   sdfWallBrakeRadius: 2.5
   sdfWallBrakeStrength: 0.85
   sdfThreatSuppress: 0.95
-  threatTransforms:
-  - {fileID: 765039362}
   maxThreats: 16
   threatAvoidRadius: 16
   threatAvoidWeight: 20
@@ -1043,8 +1041,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.17670104, y: -0.8164084, z: -0.3257139, w: 0.44290468}
-  m_LocalPosition: {x: 36.1, y: -127.4, z: 167}
+  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: -228.4, y: -66.5, z: 130}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1599,7 +1597,7 @@ PrefabInstance:
       objectReference: {fileID: 88939043}
     - target: {fileID: 6091385454925735105, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: debugLights
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6091385454925735105, guid: 570060f68caa042529407a5b291959fe, type: 3}
       propertyPath: fpsUiObject
@@ -2348,7 +2346,7 @@ Transform:
   m_GameObject: {fileID: 765039361}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 29.748688, y: -122.50374, z: 163.20813}
+  m_LocalPosition: {x: -224, y: -68, z: 130}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -2384,7 +2382,6 @@ MonoBehaviour:
   turnForce: 300
   pitchForce: 300
   inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  camSwitcher: {fileID: 330585549}
 --- !u!54 &765039364
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2846,6 +2843,7 @@ GameObject:
   m_Component:
   - component: {fileID: 883890854}
   - component: {fileID: 883890853}
+  - component: {fileID: 883890855}
   m_Layer: 0
   m_Name: PathfindingSystem
   m_TagString: Untagged
@@ -2881,6 +2879,33 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &883890855
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 883890852}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d83b509ebb000e42a1721a22a28e1d8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PathfindingGraphDebug
+  target: {fileID: 1314122826}
+  wallMask:
+    serializedVersion: 2
+    m_Bits: 64
+  seedSearchRadius: 10
+  drawPoints: 1
+  pointSize: 0.1
+  pointColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  drawRejected: 1
+  drawEdges: 1
+  edgeColor: {r: 1, g: 1, b: 1, a: 0.5}
+  spiderPrefab: {fileID: 7432214737143686317, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
+  spawnMinDistanceFraction: 0.907
+  spawnOnFloorOnly: 1
+  spiderSpeed: 2
 --- !u!1 &907279679
 GameObject:
   m_ObjectHideFlags: 0
@@ -3945,6 +3970,37 @@ Transform:
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: -50, z: 39.75}
   m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1314122825
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1314122826}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1314122826
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1314122825}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.08987578, y: 0.9683163, z: 0.17347364, w: -0.15554032}
+  m_LocalPosition: {x: -231, y: -69, z: 128.99419}
+  m_LocalScale: {x: 0.7, y: 0.7, z: 0.7}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -5646,3 +5702,4 @@ SceneRoots:
   - {fileID: 343920851}
   - {fileID: 1172074126}
   - {fileID: 883890854}
+  - {fileID: 1314122826}

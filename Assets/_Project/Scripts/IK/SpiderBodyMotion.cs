@@ -151,7 +151,8 @@ public class SpiderBodyMotion : MonoBehaviour
 
         Vector3 delta = position - _previousReferencePosition;
         _previousReferencePosition = position;
-        return Vector3.ProjectOnPlane(delta, transform.up) / dt;
+        // Normalize by root scale so lean/glide behave the same at any spider size.
+        return Vector3.ProjectOnPlane(delta, transform.up) / (dt * transform.lossyScale.x);
     }
 
     Vector3 ComputeTargetLean(Vector3 modelVelocity)

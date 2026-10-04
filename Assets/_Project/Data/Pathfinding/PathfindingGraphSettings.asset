@@ -15,8 +15,14 @@ MonoBehaviour:
   wallMask:
     serializedVersion: 2
     m_Bits: 64
-  hexLength: 1.5
+  hexLength: 3
   rayLength: 2
-  maxExploreDistance: 30
+  maxExploreDistance: 70
   maxNodes: 5000
+  clearanceRayLength: 3
+  rebuildEdgesAfterBuild: 1
+  mergeRadius: 0.6
+  edgeRadius: 1.47
+  edgeTrustRadius: 1.56
+  edgeLift: 0.05
   batchSize: 64

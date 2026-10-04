@@ -1520,7 +1520,7 @@ MonoBehaviour:
   standStillRotateTolerance: 10
   standStillStepMinDistance: 0.1
   legRaycastBodyReference: {fileID: 5580318056824607182}
-  legRaycastAimBelowBody: 7.17
+  legRaycastAimBelowBody: 10.38
   maxRaycastDistance: 10
   raycastLayers:
     serializedVersion: 2
@@ -1533,7 +1533,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7729790542202578183}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7f683876e13654a4fbe10bfb30eca1b7, type: 3}
   m_Name: 
@@ -1555,7 +1555,7 @@ MonoBehaviour:
   body: {fileID: 5580318056824607182}
   modelFrame: {fileID: 5580318056824607182}
   motionReference: {fileID: 8600409761230386347}
-  maxLeanAngle: 7
+  maxLeanAngle: 2
   leanFromSpeed: 3
   glideFromSpeed: 0.08
   maxGlideOffset: 0.2

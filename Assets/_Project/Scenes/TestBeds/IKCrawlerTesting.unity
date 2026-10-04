@@ -1778,25 +1778,9 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 435079297518784278, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
-      propertyPath: m_Enabled
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2499218919482100626, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
-      propertyPath: legRaycastAimBelowBody
-      value: 10.38
-      objectReference: {fileID: 0}
-    - target: {fileID: 4313468326263746148, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
-      propertyPath: maxLeanAngle
-      value: 2
-      objectReference: {fileID: 0}
     - target: {fileID: 7729790542202578183, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
       propertyPath: m_Name
       value: StiltWatcher
-      objectReference: {fileID: 0}
-    - target: {fileID: 7729790542202578183, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
-      propertyPath: m_IsActive
-      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8600409761230386347, guid: bcfc912ec95f74ef2965a85169825e61, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1851,18 +1835,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 293855599345693635, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
-      propertyPath: bodyHeight
-      value: 2.73
-      objectReference: {fileID: 0}
     - target: {fileID: 1099255252268974068, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
       propertyPath: LightsModule.light
       value: 
       objectReference: {fileID: 444041621}
-    - target: {fileID: 3674791253931910456, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
-      propertyPath: m_Enabled
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 7277876838974690369, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
       propertyPath: m_Name
       value: SporeSpreader
@@ -1873,7 +1849,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8179306016123655470, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 3.55
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8179306016123655470, guid: 093dfc16dedb44aae9d0ed763102dd23, type: 3}
       propertyPath: m_LocalPosition.z
