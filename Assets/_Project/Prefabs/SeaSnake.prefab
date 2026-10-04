@@ -164,9 +164,9 @@ MonoBehaviour:
   minSeekStrength: 2
   attackRange: 20
   avoidTarget: 1
-  targetAvoidanceRadius: 3
-  fleeDuration: 1.5
-  fleeExitRadius: 3.5
+  targetAvoidanceRadius: 5
+  fleeDuration: 3.5
+  fleeExitRadius: 6
   bulletPrefab: {fileID: 4147194933917231382, guid: b2ee10c90c0574ac1b181d2f7c72d9da, type: 3}
   range: 10
   magazineSize: 10

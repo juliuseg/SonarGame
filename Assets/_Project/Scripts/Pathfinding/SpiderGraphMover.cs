@@ -22,6 +22,9 @@ public class SpiderGraphMover : MonoBehaviour
 
     private const int MaxNodeHopsPerFrame = 4;
 
+    /// <summary>True while the spider is within arrive tolerance of the target.</summary>
+    public bool HasArrived { get; private set; }
+
     private Vector3 _heading;
     private string _lastFailure;
     private PathfindingGraphBuilder.Node _current;
@@ -33,13 +36,18 @@ public class SpiderGraphMover : MonoBehaviour
         if (graph == null || !graph.IsBuilt)
         {
             _current = null;
+            HasArrived = false;
             return Fail("graph not built");
         }
 
         Vector3 pos = transform.position;
 
         if (Vector3.Distance(pos, graph.SourcePosition) <= graph.ToleranceToRadius(arriveTolerance))
+        {
+            HasArrived = true;
             return Fail("arrived at target");
+        }
+        HasArrived = false;
 
         if (!TrackCurrentNode(graph, pos))
             return Fail("no graph node nearby", () => $"pos {pos}, search radius {graph.ToleranceToRadius(searchTolerance):F2}m, graph has {graph.Nodes.Count} nodes");

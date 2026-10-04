@@ -2146,7 +2146,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &892138380530368243
 Transform:
   m_ObjectHideFlags: 0
@@ -2179,7 +2179,7 @@ ParticleSystem:
   emitterVelocityMode: 1
   looping: 0
   prewarm: 0
-  playOnAwake: 1
+  playOnAwake: 0
   useUnscaledTime: 0
   autoRandomSeed: 1
   startDelay:
@@ -2298,7 +2298,7 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 1
-      scalar: 30
+      scalar: 25
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -2416,8 +2416,8 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 1
-      minScalar: 0.2
+      scalar: 0.5
+      minScalar: 0.1
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -2794,7 +2794,7 @@ ParticleSystem:
     serializedVersion: 6
     enabled: 1
     type: 4
-    angle: 6.88
+    angle: 6.6
     length: 5
     boxThickness: {x: 0, y: 0, z: 0}
     radiusThickness: 1
@@ -2880,7 +2880,7 @@ ParticleSystem:
     sphericalDirectionAmount: 0
     randomPositionAmount: 0
     radius:
-      value: 1.7
+      value: 0.68
       mode: 0
       spread: 0
       speed:
@@ -7099,6 +7099,7 @@ GameObject:
   - component: {fileID: 3674791253931910456}
   - component: {fileID: 7618424202397466349}
   - component: {fileID: 7432214737143686317}
+  - component: {fileID: 2676819969410166608}
   m_Layer: 0
   m_Name: SporeSpreader
   m_TagString: Untagged
@@ -7116,7 +7117,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 1, z: 0, w: 0}
   m_LocalPosition: {x: 11.08, y: 3.55, z: 8.13}
-  m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 4139468958666804227}
@@ -7226,6 +7227,20 @@ MonoBehaviour:
   searchTolerance: 1.1
   arriveTolerance: 2.24
   turnSharpness: 6
+--- !u!114 &2676819969410166608
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7277876838974690369}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c9f348e48903f844969a3fc4eb11e1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SpiderArrivalEffect
+  particles: {fileID: 1099255252268974068}
+  interval: 1
 --- !u!1 &7299374428684735722
 GameObject:
   m_ObjectHideFlags: 0
